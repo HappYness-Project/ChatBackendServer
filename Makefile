@@ -1,6 +1,6 @@
 DEV_ENV_SETUP_FOLDER ?= ./dev-env
 DOCKER_COMPOSE_FILE ?= $(DEV_ENV_SETUP_FOLDER)/docker-compose.yml
-
+CONTAINER_NAME ?= "message-containers"
 VERSION ?= $(shell git rev-parse --short HEAD)
 
 help:
@@ -17,11 +17,11 @@ version:
 
 start:
 	@echo "Starting app..."
-	@docker compose -f $(DOCKER_COMPOSE_FILE) up --build -d
+	@docker compose -f $(DOCKER_COMPOSE_FILE) -p $(CONTAINER_NAME) up --build -d
 
 down:
 	@echo "Stopping app..."
-	@docker compose -f $(DOCKER_COMPOSE_FILE) down
+	@docker compose -f $(DOCKER_COMPOSE_FILE) -p $(CONTAINER_NAME) down
 
 build:
 	go build -v ./...
