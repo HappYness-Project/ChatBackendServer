@@ -4,8 +4,10 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
+	"example.com/main/configs"
 	"github.com/gorilla/websocket"
 )
 
@@ -13,6 +15,16 @@ var clients = make(map[*websocket.Conn]bool)
 var broadcast = make(chan Message)
 
 func main() {
+	var current_env = os.Getenv("APP_ENV")
+	env := configs.InitConfig(current_env)
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s timezone=UTC connect_timeout=5 ",
+		env.DBHost, env.DBPort, env.DBUser, env.DBPwd, env.DBName)
+	if current_env == "local" || current_env == "" {
+		connStr += "sslmode=disable"
+	} else {
+		connStr += "sslmode=require"
+	}
+
 	fmt.Println("Run the chat server")
 
 	http.HandleFunc("/", homePage)
