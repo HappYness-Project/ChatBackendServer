@@ -2,13 +2,14 @@ version: '3'
 
 services:
   db:
-    image: postgres:latest  # Use the latest PostgreSQL image
+    image: postgres:latest
+    container_name: message_db
     restart: always
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
     ports:
-      - "8011:5420"
+      - "8020:5432"
     volumes:
       - ./postgres-data:/var/lib/postgresql/data
       - ./sql/create_tables.sql:/docker-entrypoint-initdb.d/create_tables.sql
@@ -17,35 +18,35 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - internal
+    # networks:
+    #   - internal
 
-  api:
-    container_name: message-api
-    build:
-      context: ./../
-      dockerfile: ./Dockerfile
-    restart: always
-    volumes:
-      - .:/go/src/api
-    ports:
-      - "8070:8070"
-    env_file:
-      - ./local.env
-    environment:
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: postgres
-    links:
-      - db
-    depends_on:
-      - db
-    networks:
-      - internal
+  # api:
+  #   container_name: message-api
+  #   build:
+  #     context: ./../
+  #     dockerfile: ./Dockerfile
+  #   restart: always
+  #   volumes:
+  #     - .:/go/src/api
+  #   ports:
+  #     - "8070:8070"
+  #   env_file:
+  #     - ./local.env
+  #   environment:
+  #     DB_USER: postgres
+  #     DB_PASSWORD: postgres
+  #     DB_NAME: postgres
+  #   links:
+  #     - db
+  #   depends_on:
+  #     - db
+  #   networks:
+  #     - internal
 
 volumes:
   db_data:
 
-networks:
-    internal:
-      driver: bridge
+# networks:
+#     internal:
+#       driver: bridge

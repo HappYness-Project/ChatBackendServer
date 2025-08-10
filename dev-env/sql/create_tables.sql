@@ -41,7 +41,7 @@ volatile;
 
 -- Messages table - stores the actual chat messages
 CREATE TABLE IF NOT EXISTS public.message (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id UUID PRIMARY KEY DEFAULT public.uuid_generate_v7(),
     chat_id UUID NOT NULL,
     sender_id UUID NOT NULL,
     content TEXT NOT NULL,

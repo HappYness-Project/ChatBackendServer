@@ -25,7 +25,7 @@ func main() {
 	_, err := dbs.ConnectToDb(connStr)
 	if err != nil {
 		// logger.Error().Err(err).Msg("Unable to connect to the database.")
-		fmt.Println("Unable to connect to the database.")
+		fmt.Println("Unable to connect to the database." + err.Error())
 		return
 	}
 	http.HandleFunc("/", handler.Home)
