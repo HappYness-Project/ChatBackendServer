@@ -29,3 +29,4 @@ go.work.sum
 
 
 postgres-data
+dev-env/postgres-data/*
