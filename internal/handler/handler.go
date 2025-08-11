@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/HappYness-Project/ChatBackendServer/internal/message"
 	"github.com/gorilla/websocket"
@@ -10,6 +14,7 @@ import (
 
 var clients = make(map[*websocket.Conn]bool)
 var broadcast = make(chan message.Message)
+var messageRepo *message.Repository
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -17,6 +22,10 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
+}
+
+func InitMessageRepository(db *sql.DB) {
+	messageRepo = message.NewRepository(db)
 }
 
 func HandleConnections(w http.ResponseWriter, r *http.Request) {
@@ -88,4 +97,197 @@ func Home(w http.ResponseWriter, r *http.Request) {
 		Version: "1.0.0",
 	}
 	WriteJsonWithEncode(w, http.StatusOK, payload)
+}
+
+// CreateMessage creates a new message
+func CreateMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ChatID      string `json:"chat_id"`
+		SenderID    string `json:"sender_id"`
+		Content     string `json:"content"`
+		MessageType string `json:"message_type"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.ChatID == "" || req.SenderID == "" || req.Content == "" {
+		http.Error(w, "Missing required fields", http.StatusBadRequest)
+		return
+	}
+
+	if req.MessageType == "" {
+		req.MessageType = "text"
+	}
+
+	msg := &message.Message{
+		ChatID:      req.ChatID,
+		SenderID:    req.SenderID,
+		Content:     req.Content,
+		MessageType: req.MessageType,
+		ReadStatus:  false,
+	}
+
+	if err := messageRepo.Create(msg); err != nil {
+		http.Error(w, "Failed to create message", http.StatusInternalServerError)
+		return
+	}
+
+	// Broadcast to WebSocket clients
+	select {
+	case broadcast <- *msg:
+	default:
+	}
+
+	WriteJsonWithEncode(w, http.StatusCreated, msg)
+}
+
+// GetMessagesByChatID retrieves messages for a specific chat
+func GetMessagesByChatID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	chatID := r.URL.Query().Get("chat_id")
+	if chatID == "" {
+		http.Error(w, "chat_id is required", http.StatusBadRequest)
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	offsetStr := r.URL.Query().Get("offset")
+	offset := 0
+	if offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	messages, err := messageRepo.GetByChatID(chatID, limit, offset)
+	if err != nil {
+		http.Error(w, "Failed to retrieve messages", http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonWithEncode(w, http.StatusOK, map[string]interface{}{
+		"messages": messages,
+		"count":    len(messages),
+	})
+}
+
+// GetMessagesByUserGroup retrieves messages for a group of users
+func GetMessagesByUserGroup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userIDsStr := r.URL.Query().Get("user_ids")
+	if userIDsStr == "" {
+		http.Error(w, "user_ids is required", http.StatusBadRequest)
+		return
+	}
+
+	userIDs := strings.Split(userIDsStr, ",")
+	for i, id := range userIDs {
+		userIDs[i] = strings.TrimSpace(id)
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	offsetStr := r.URL.Query().Get("offset")
+	offset := 0
+	if offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	messages, err := messageRepo.GetByUserGroup(userIDs, limit, offset)
+	if err != nil {
+		http.Error(w, "Failed to retrieve messages", http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonWithEncode(w, http.StatusOK, map[string]interface{}{
+		"messages": messages,
+		"count":    len(messages),
+	})
+}
+
+// MarkMessageAsRead marks a message as read
+func MarkMessageAsRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		MessageID string `json:"message_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.MessageID == "" {
+		http.Error(w, "message_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := messageRepo.UpdateReadStatus(req.MessageID, true); err != nil {
+		http.Error(w, "Failed to mark message as read", http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonWithEncode(w, http.StatusOK, map[string]string{
+		"status":  "success",
+		"message": "Message marked as read",
+	})
+}
+
+// DeleteMessage deletes a message
+func DeleteMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	messageID := r.URL.Query().Get("message_id")
+	if messageID == "" {
+		http.Error(w, "message_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := messageRepo.Delete(messageID); err != nil {
+		http.Error(w, "Failed to delete message", http.StatusInternalServerError)
+		return
+	}
+
+	WriteJsonWithEncode(w, http.StatusOK, map[string]string{
+		"status":  "success",
+		"message": "Message deleted",
+	})
 }
