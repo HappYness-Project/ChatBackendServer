@@ -28,13 +28,13 @@ func main() {
 		fmt.Println("Unable to connect to the database." + err.Error())
 		return
 	}
-	
+
 	// Initialize message repository
 	handler.InitMessageRepository(db)
 	// Routes
 	http.HandleFunc("/", handler.Home)
 	http.HandleFunc("/ws", handler.HandleConnections)
-	
+
 	// Message API endpoints
 	http.HandleFunc("/api/messages", handler.CreateMessage)
 	http.HandleFunc("/api/messages/chat", handler.GetMessagesByChatID)

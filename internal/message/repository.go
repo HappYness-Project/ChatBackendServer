@@ -2,9 +2,6 @@ package message
 
 import (
 	"database/sql"
-	"time"
-
-	"github.com/google/uuid"
 )
 
 type Repository struct {
@@ -15,21 +12,11 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) Create(message *Message) error {
-	if message.ID == "" {
-		message.ID = uuid.New().String()
-	}
-	if message.CreatedAt.IsZero() {
-		message.CreatedAt = time.Now()
-	}
-
+func (r *Repository) Create(message Message) error {
 	query := `
-		INSERT INTO messages (id, chat_id, sender_id, content, message_type, created_at, read_status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`
-
-	_, err := r.db.Exec(query, message.ID, message.ChatID, message.SenderID,
-		message.Content, message.MessageType, message.CreatedAt, message.ReadStatus)
+		INSERT INTO messages (chat_id, sender_id, content, message_type, created_at)
+		VALUES ($1, $2, $3, $4, $5)`
+	_, err := r.db.Exec(query, message.ChatID, message.SenderID, message.Content, message.MessageType, message.CreatedAt)
 
 	return err
 }

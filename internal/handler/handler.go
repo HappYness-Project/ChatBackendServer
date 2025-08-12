@@ -15,7 +15,6 @@ import (
 var clients = make(map[*websocket.Conn]bool)
 var broadcast = make(chan message.Message)
 var messageRepo *message.Repository
-
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -99,22 +98,19 @@ func Home(w http.ResponseWriter, r *http.Request) {
 	WriteJsonWithEncode(w, http.StatusOK, payload)
 }
 
-// CreateMessage creates a new message
 func CreateMessage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		fmt.Println("Error upgrading:", err)
 		return
 	}
+	defer conn.Close()
 
-	var req struct {
-		ChatID      string `json:"chat_id"`
-		SenderID    string `json:"sender_id"`
-		Content     string `json:"content"`
-		MessageType string `json:"message_type"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+	var req message.CreateMessageDto
+	err = conn.ReadJSON(&req)
+	if err != nil {
+		fmt.Println("ReadJSON error:", err)
 		return
 	}
 
@@ -122,17 +118,11 @@ func CreateMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing required fields", http.StatusBadRequest)
 		return
 	}
-
-	if req.MessageType == "" {
-		req.MessageType = "text"
-	}
-
-	msg := &message.Message{
+	msg := message.Message{
 		ChatID:      req.ChatID,
 		SenderID:    req.SenderID,
 		Content:     req.Content,
 		MessageType: req.MessageType,
-		ReadStatus:  false,
 	}
 
 	if err := messageRepo.Create(msg); err != nil {
@@ -142,7 +132,7 @@ func CreateMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Broadcast to WebSocket clients
 	select {
-	case broadcast <- *msg:
+	case broadcast <- msg: // I changed it to object(non-pointer... but should it be?)
 	default:
 	}
 
