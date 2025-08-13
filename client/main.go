@@ -23,6 +23,17 @@ type Message struct {
 }
 
 func main() {
+	// Get username from user
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("Enter your username: ")
+	scanner.Scan()
+	username := strings.TrimSpace(scanner.Text())
+
+	if username == "" {
+		fmt.Println("Username cannot be empty!")
+		return
+	}
+
 	// Server URL
 	serverURL := "ws://localhost:4545/ws"
 
@@ -33,7 +44,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	fmt.Println("Connected to WebSocket server at", serverURL)
+	fmt.Printf("Connected to WebSocket server at %s as %s\n", serverURL, username)
 	fmt.Println("Type messages to send (or 'quit' to exit):")
 
 	// Channel to handle interrupt signal
@@ -59,11 +70,11 @@ func main() {
 
 	// Goroutine to send messages
 	go func() {
-		scanner := bufio.NewScanner(os.Stdin)
+		inputScanner := bufio.NewScanner(os.Stdin)
 		fmt.Print("> ")
 
-		for scanner.Scan() {
-			text := strings.TrimSpace(scanner.Text())
+		for inputScanner.Scan() {
+			text := strings.TrimSpace(inputScanner.Text())
 
 			if text == "quit" {
 				fmt.Println("Disconnecting...")
@@ -80,7 +91,7 @@ func main() {
 			// Create message
 			msg := Message{
 				ChatID:      "test-chat-1",
-				SenderID:    "client-user",
+				SenderID:    username,
 				Content:     text,
 				MessageType: "text",
 				CreatedAt:   time.Now(),

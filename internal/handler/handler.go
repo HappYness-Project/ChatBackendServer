@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/HappYness-Project/ChatBackendServer/internal/message"
+	entity "github.com/HappYness-Project/ChatBackendServer/internal/entity"
 	"github.com/gorilla/websocket"
 )
 
 var clients = make(map[*websocket.Conn]bool)
-var broadcast = make(chan message.Message)
-var messageRepo *message.Repository
+var broadcast = make(chan entity.Message)
+var messageRepo *Repository
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -24,7 +24,7 @@ var upgrader = websocket.Upgrader{
 }
 
 func InitMessageRepository(db *sql.DB) {
-	messageRepo = message.NewRepository(db)
+	messageRepo = NewRepository(db)
 }
 
 func HandleConnections(w http.ResponseWriter, r *http.Request) {
@@ -36,9 +36,12 @@ func HandleConnections(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	clients[conn] = true
+	// TODO : API request to the Task API to get the detail information
+	newFunction()
 
+	//TODO needs
 	for {
-		var msg message.Message
+		var msg entity.Message
 		err := conn.ReadJSON(&msg)
 		if err != nil {
 			fmt.Println(err)
@@ -66,6 +69,36 @@ func HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// 		//log.Println("Unknown message:", msg.Type)
 	// 	}
 	// }
+}
+
+func newFunction() {
+	externalAPIURL := "https://example.com/api/user-groups/1/chats" // Replace with actual Task API URL
+	req, err := http.NewRequest("GET", externalAPIURL, nil)
+	if err != nil {
+		fmt.Println("Error creating request to external API:", err)
+	} else {
+		// Optionally add headers, authentication, etc.
+		// req.Header.Set("Authorization", "Bearer <token>")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Println("Error making request to external API:", err)
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				var apiResponse map[string]interface{}
+				if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+					fmt.Println("Error decoding external API response:", err)
+				} else {
+					fmt.Println("External API response:", apiResponse)
+					// You can use apiResponse as needed
+				}
+			} else {
+				fmt.Printf("External API returned status: %d\n", resp.StatusCode)
+			}
+		}
+	}
 }
 
 func HandleMessages() {
@@ -107,7 +140,7 @@ func CreateMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	var req message.CreateMessageDto
+	var req entity.CreateMessageDto
 	err = conn.ReadJSON(&req)
 	if err != nil {
 		fmt.Println("ReadJSON error:", err)
@@ -118,7 +151,7 @@ func CreateMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing required fields", http.StatusBadRequest)
 		return
 	}
-	msg := message.Message{
+	msg := entity.Message{
 		ChatID:      req.ChatID,
 		SenderID:    req.SenderID,
 		Content:     req.Content,

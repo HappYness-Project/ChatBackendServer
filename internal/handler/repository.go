@@ -1,7 +1,9 @@
-package message
+package handler
 
 import (
 	"database/sql"
+
+	entity "github.com/HappYness-Project/ChatBackendServer/internal/entity"
 )
 
 type Repository struct {
@@ -12,7 +14,7 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) Create(message Message) error {
+func (r *Repository) Create(message entity.Message) error {
 	query := `
 		INSERT INTO messages (chat_id, sender_id, content, message_type, created_at)
 		VALUES ($1, $2, $3, $4, $5)`
@@ -21,7 +23,7 @@ func (r *Repository) Create(message Message) error {
 	return err
 }
 
-func (r *Repository) GetByChatID(chatID string, limit, offset int) ([]Message, error) {
+func (r *Repository) GetByChatID(chatID string, limit, offset int) ([]entity.Message, error) {
 	query := `
 		SELECT id, chat_id, sender_id, content, message_type, created_at, read_status
 		FROM messages
@@ -36,9 +38,9 @@ func (r *Repository) GetByChatID(chatID string, limit, offset int) ([]Message, e
 	}
 	defer rows.Close()
 
-	var messages []Message
+	var messages []entity.Message
 	for rows.Next() {
-		var msg Message
+		var msg entity.Message
 		err := rows.Scan(&msg.ID, &msg.ChatID, &msg.SenderID, &msg.Content,
 			&msg.MessageType, &msg.CreatedAt, &msg.ReadStatus)
 		if err != nil {
@@ -50,9 +52,9 @@ func (r *Repository) GetByChatID(chatID string, limit, offset int) ([]Message, e
 	return messages, nil
 }
 
-func (r *Repository) GetByUserGroup(userIDs []string, limit, offset int) ([]Message, error) {
+func (r *Repository) GetByUserGroup(userIDs []string, limit, offset int) ([]entity.Message, error) {
 	if len(userIDs) == 0 {
-		return []Message{}, nil
+		return []entity.Message{}, nil
 	}
 
 	query := `
@@ -70,9 +72,9 @@ func (r *Repository) GetByUserGroup(userIDs []string, limit, offset int) ([]Mess
 	}
 	defer rows.Close()
 
-	var messages []Message
+	var messages []entity.Message
 	for rows.Next() {
-		var msg Message
+		var msg entity.Message
 		err := rows.Scan(&msg.ID, &msg.ChatID, &msg.SenderID, &msg.Content,
 			&msg.MessageType, &msg.CreatedAt, &msg.ReadStatus)
 		if err != nil {
@@ -84,14 +86,14 @@ func (r *Repository) GetByUserGroup(userIDs []string, limit, offset int) ([]Mess
 	return messages, nil
 }
 
-func (r *Repository) GetByID(messageID string) (*Message, error) {
+func (r *Repository) GetByID(messageID string) (*entity.Message, error) {
 	query := `
 		SELECT id, chat_id, sender_id, content, message_type, created_at, read_status
 		FROM messages
 		WHERE id = $1
 	`
 
-	var msg Message
+	var msg entity.Message
 	err := r.db.QueryRow(query, messageID).Scan(
 		&msg.ID, &msg.ChatID, &msg.SenderID, &msg.Content,
 		&msg.MessageType, &msg.CreatedAt, &msg.ReadStatus)

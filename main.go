@@ -36,11 +36,11 @@ func main() {
 	http.HandleFunc("/ws", handler.HandleConnections)
 
 	// Message API endpoints
-	http.HandleFunc("/api/messages", handler.CreateMessage)
-	http.HandleFunc("/api/messages/chat", handler.GetMessagesByChatID)
-	http.HandleFunc("/api/messages/user-group", handler.GetMessagesByUserGroup)
-	http.HandleFunc("/api/messages/mark-read", handler.MarkMessageAsRead)
-	http.HandleFunc("/api/messages/delete", handler.DeleteMessage)
+	// http.HandleFunc("/api/messages", handler.CreateMessage)
+	// http.HandleFunc("/api/messages/chat", handler.GetMessagesByChatID)
+	// http.HandleFunc("/api/messages/user-group", handler.GetMessagesByUserGroup)
+	// http.HandleFunc("/api/messages/mark-read", handler.MarkMessageAsRead)
+	// http.HandleFunc("/api/messages/delete", handler.DeleteMessage)
 
 	go handler.HandleMessages()
 	fmt.Println("Server started on : 4545")
