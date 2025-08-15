@@ -12,27 +12,25 @@ import (
 	chatRepo "github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
 	msgRepo "github.com/HappYness-Project/ChatBackendServer/internal/message/repository"
 	"github.com/go-chi/chi/v5"
-	"github.com/gorilla/websocket"
 )
-
-var clients = make(map[*websocket.Conn]bool)
-var broadcast = make(chan domain.Message)
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
 
 type Handler struct {
 	logger      *loggers.AppLogger
 	messageRepo msgRepo.MessageRepo
 	chatRepo    chatRepo.ChatRepo
+	wsManager   *WebSocketManager
 }
 
 func NewHandler(logger *loggers.AppLogger, repo msgRepo.MessageRepo, chatRepo chatRepo.ChatRepo) *Handler {
-	return &Handler{logger: logger, messageRepo: repo, chatRepo: chatRepo}
+	wsManager := NewWebSocketManager()
+	handler := &Handler{
+		logger:      logger,
+		messageRepo: repo,
+		chatRepo:    chatRepo,
+		wsManager:   wsManager,
+	}
+	go handler.HandleMessages()
+	return handler
 }
 
 func (h *Handler) RegisterRoutes(router chi.Router) {
@@ -62,18 +60,17 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// 	http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 	// 	return
 	// }
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.wsManager.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Println("Error upgrading:", err)
 		return
 	}
-	defer conn.Close()
+	defer h.wsManager.RemoveClient(conn)
 
-	clients[conn] = true
+	h.wsManager.AddClient(conn)
 	chat, err := h.chatRepo.GetChatByUserGroupId(groupId)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Error occurred during getting chat by user group. " + err.Error())
-		delete(clients, conn)
 		return
 	}
 
@@ -82,32 +79,23 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		err := conn.ReadJSON(&msg)
 		if err != nil {
 			h.logger.Error().Err(err).Msg("Error occurred during reading message. " + err.Error())
-			delete(clients, conn)
 			return
 		}
 		msg.ChatID = chat.Id
 		msg.MessageType = "text"
 
-		broadcast <- msg
+		h.wsManager.BroadcastMessage(msg)
 	}
 }
 func (h *Handler) HandleMessages() {
 	for {
-		msg := <-broadcast
+		msg := <-h.wsManager.broadcast
 		if err := h.messageRepo.Create(msg); err != nil {
-			// http.Error(w, "Failed to create message", http.StatusInternalServerError)
 			h.logger.Error().Err(err).Msg("Unable to create a message")
 		}
 		fmt.Println(msg.Content)
-		//loop through the client list and sending the message to the client
-		for client := range clients {
-			err := client.WriteJSON(msg)
-			if err != nil {
-				h.logger.Error().Err(err).Msg("Unable to write a message")
-				client.Close()
-				delete(clients, client)
-			}
-		}
+
+		h.wsManager.SendToClients(msg, h.logger)
 	}
 }
 
@@ -136,7 +124,11 @@ func (h *Handler) GetMessagesByChatID(w http.ResponseWriter, r *http.Request) {
 
 	messages, err := h.messageRepo.GetByChatID(chatID, limit, offset)
 	if err != nil {
-		http.Error(w, "Failed to retrieve messages", http.StatusInternalServerError)
+		h.logger.Error().Err(err).Msg("Failed to retrieve messages by chatID")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred during getting chat ID",
+		})
 		return
 	}
 
