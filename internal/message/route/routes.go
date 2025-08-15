@@ -79,7 +79,8 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		msg.ChatID = chat.Id
-		msg.MessageType = chat.Type
+		msg.MessageType = "text"
+
 		broadcast <- msg
 	}
 }
