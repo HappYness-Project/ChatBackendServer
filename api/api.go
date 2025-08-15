@@ -5,8 +5,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/HappYness-Project/ChatBackendServer/internal/repository"
-	"github.com/HappYness-Project/ChatBackendServer/internal/route"
+	chatRepo "github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
+	messageRepo "github.com/HappYness-Project/ChatBackendServer/internal/message/repository"
+	"github.com/HappYness-Project/ChatBackendServer/internal/message/route"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -26,11 +27,12 @@ func NewApiServer(addr string, db *sql.DB) *ApiServer {
 func (s *ApiServer) Setup() *chi.Mux {
 	mux := chi.NewRouter()
 
-	repo := repository.NewRepository(s.db)
+	repo := messageRepo.NewRepository(s.db)
+	chatRepo := chatRepo.NewRepository(s.db)
 
 	mux.Get("/", Home)
 	mux.Get("/health", Home)
-	msgHandler := route.NewHandler(*repo)
+	msgHandler := route.NewHandler(*repo, *chatRepo)
 
 	mux.Group(func(r chi.Router) {
 		msgHandler.RegisterRoutes(r)

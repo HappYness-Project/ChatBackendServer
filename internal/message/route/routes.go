@@ -5,14 +5,16 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/HappYness-Project/ChatBackendServer/internal/entity"
-	"github.com/HappYness-Project/ChatBackendServer/internal/repository"
+	domain "github.com/HappYness-Project/ChatBackendServer/internal/message/domain"
+
+	chatRepo "github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
+	msgRepo "github.com/HappYness-Project/ChatBackendServer/internal/message/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 )
 
 var clients = make(map[*websocket.Conn]bool)
-var broadcast = make(chan entity.Message)
+var broadcast = make(chan domain.Message)
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -22,11 +24,12 @@ var upgrader = websocket.Upgrader{
 }
 
 type Handler struct {
-	repo repository.MessageRepo
+	messageRepo msgRepo.MessageRepo
+	chatRepo    chatRepo.ChatRepo
 }
 
-func NewHandler(repo repository.MessageRepo) *Handler {
-	return &Handler{repo: repo}
+func NewHandler(repo msgRepo.MessageRepo, chatRepo chatRepo.ChatRepo) *Handler {
+	return &Handler{messageRepo: repo, chatRepo: chatRepo}
 }
 
 func (h *Handler) RegisterRoutes(router chi.Router) {
@@ -46,7 +49,6 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// 	http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 	// 	return
 	// }
-
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Println("Error upgrading:", err)
@@ -55,23 +57,23 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	clients[conn] = true
-	// chat, err := h.repo.GetChatByUserGroupId(1)
-	// if err != nil {
-	// 	fmt.Println("Error getting chat by user group ID:", err)
-	// 	delete(clients, conn)
-	// 	return
-	// }
+	chat, err := h.chatRepo.GetChatByUserGroupId(1)
+	if err != nil {
+		fmt.Println("Error getting chat by user group ID:", err)
+		delete(clients, conn)
+		return
+	}
 
 	for {
-		var msg entity.Message
+		var msg domain.Message
 		err := conn.ReadJSON(&msg)
 		if err != nil {
 			fmt.Println(err)
 			delete(clients, conn)
 			return
 		}
-		// msg.ChatID = chat.Id
-		// msg.MessageType = chat.Type
+		msg.ChatID = chat.Id
+		msg.MessageType = chat.Type
 		broadcast <- msg
 	}
 }
@@ -80,7 +82,7 @@ func (h *Handler) HandleMessages() {
 	for {
 		//got message from channel
 		msg := <-broadcast
-		if err := h.repo.Create(msg); err != nil {
+		if err := h.messageRepo.Create(msg); err != nil {
 			// http.Error(w, "Failed to create message", http.StatusInternalServerError)
 			fmt.Println(err)
 		}
@@ -126,7 +128,7 @@ func (h *Handler) GetMessagesByChatID(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	messages, err := h.repo.GetByChatID(chatID, limit, offset)
+	messages, err := h.messageRepo.GetByChatID(chatID, limit, offset)
 	if err != nil {
 		http.Error(w, "Failed to retrieve messages", http.StatusInternalServerError)
 		return
