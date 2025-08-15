@@ -35,7 +35,7 @@ func main() {
 	}
 
 	// Server URL
-	serverURL := "ws://localhost:4545/ws"
+	serverURL := "ws://localhost:4545/api/ws"
 
 	// Connect to WebSocket server
 	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)

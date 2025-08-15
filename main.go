@@ -3,12 +3,11 @@ package main
 // the code below is from https://medium.com/@parvjn616/building-a-websocket-chat-application-in-go-388fff758575
 import (
 	"fmt"
-	"net/http"
 	"os"
 
+	"github.com/HappYness-Project/ChatBackendServer/api"
 	"github.com/HappYness-Project/ChatBackendServer/configs"
 	"github.com/HappYness-Project/ChatBackendServer/dbs"
-	"github.com/HappYness-Project/ChatBackendServer/internal/handler"
 )
 
 func main() {
@@ -22,31 +21,16 @@ func main() {
 		connStr += "sslmode=require"
 	}
 	fmt.Println("Database connection string: " + connStr)
-	db, err := dbs.ConnectToDb(connStr)
+	database, err := dbs.ConnectToDb(connStr)
 	if err != nil {
-		// logger.Error().Err(err).Msg("Unable to connect to the database.")
 		fmt.Println("Unable to connect to the database." + err.Error())
 		return
 	}
 
-	// Initialize message repository
-	handler.InitMessageRepository(db)
-	// Routes
-	http.HandleFunc("/", handler.Home)
-	http.HandleFunc("/ws", handler.HandleConnections)
-
-	// Message API endpoints
-	// http.HandleFunc("/api/messages", handler.CreateMessage)
-	// http.HandleFunc("/api/messages/chat", handler.GetMessagesByChatID)
-	// http.HandleFunc("/api/messages/user-group", handler.GetMessagesByUserGroup)
-	// http.HandleFunc("/api/messages/mark-read", handler.MarkMessageAsRead)
-	// http.HandleFunc("/api/messages/delete", handler.DeleteMessage)
-
-	go handler.HandleMessages()
-	fmt.Println("Server started on : 4545")
-	err = http.ListenAndServe(":4545", nil)
-	if err != nil {
-		panic("Error starting server: " + err.Error())
+	server := api.NewApiServer(fmt.Sprintf("%s:%s", env.Host, env.Port), database)
+	r := server.Setup()
+	if err := server.Run(r); err != nil {
+		fmt.Println("Unable to set up the server." + err.Error())
+		return
 	}
-
 }
