@@ -7,6 +7,7 @@ import (
 
 	"github.com/HappYness-Project/ChatBackendServer/common"
 	domain "github.com/HappYness-Project/ChatBackendServer/internal/message/domain"
+	"github.com/HappYness-Project/ChatBackendServer/loggers"
 
 	chatRepo "github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
 	msgRepo "github.com/HappYness-Project/ChatBackendServer/internal/message/repository"
@@ -25,24 +26,30 @@ var upgrader = websocket.Upgrader{
 }
 
 type Handler struct {
+	logger      *loggers.AppLogger
 	messageRepo msgRepo.MessageRepo
 	chatRepo    chatRepo.ChatRepo
 }
 
-func NewHandler(repo msgRepo.MessageRepo, chatRepo chatRepo.ChatRepo) *Handler {
-	return &Handler{messageRepo: repo, chatRepo: chatRepo}
+func NewHandler(logger *loggers.AppLogger, repo msgRepo.MessageRepo, chatRepo chatRepo.ChatRepo) *Handler {
+	return &Handler{logger: logger, messageRepo: repo, chatRepo: chatRepo}
 }
 
 func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Route("/api", func(r chi.Router) {
 		r.Get("/ws/user-groups/{groupID}", h.HandleConnections)
+		r.Get("/chats/{chatID}/messages", h.GetMessagesByChatID)
 	})
 }
 
 func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	groupId, err := strconv.Atoi(chi.URLParam(r, "groupID"))
 	if err != nil {
-		// response.ErrorResponse(w, http.StatusBadRequest, *(response.New(constants.InvalidParameter, "Invalid Group ID")))
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Parameter",
+			ErrorCode: "Invalid Group ID",
+			Detail:    "The provided groupID is not a valid integer.",
+		})
 		return
 	}
 
@@ -65,7 +72,7 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	clients[conn] = true
 	chat, err := h.chatRepo.GetChatByUserGroupId(groupId)
 	if err != nil {
-		fmt.Println("Error getting chat by user group ID:", err)
+		h.logger.Error().Err(err).Msg("Error occurred during getting chat by user group. " + err.Error())
 		delete(clients, conn)
 		return
 	}
@@ -74,7 +81,7 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		var msg domain.Message
 		err := conn.ReadJSON(&msg)
 		if err != nil {
-			fmt.Println(err)
+			h.logger.Error().Err(err).Msg("Error occurred during reading message. " + err.Error())
 			delete(clients, conn)
 			return
 		}
@@ -84,21 +91,19 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		broadcast <- msg
 	}
 }
-
 func (h *Handler) HandleMessages() {
 	for {
-		//got message from channel
 		msg := <-broadcast
 		if err := h.messageRepo.Create(msg); err != nil {
 			// http.Error(w, "Failed to create message", http.StatusInternalServerError)
-			fmt.Println(err)
+			h.logger.Error().Err(err).Msg("Unable to create a message")
 		}
 		fmt.Println(msg.Content)
 		//loop through the client list and sending the message to the client
 		for client := range clients {
 			err := client.WriteJSON(msg)
 			if err != nil {
-				fmt.Println(err)
+				h.logger.Error().Err(err).Msg("Unable to write a message")
 				client.Close()
 				delete(clients, client)
 			}
@@ -106,16 +111,10 @@ func (h *Handler) HandleMessages() {
 	}
 }
 
-// GetMessagesByChatID retrieves messages for a specific chat
 func (h *Handler) GetMessagesByChatID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	chatID := r.URL.Query().Get("chat_id")
+	chatID := chi.URLParam(r, "chatID")
 	if chatID == "" {
-		http.Error(w, "chat_id is required", http.StatusBadRequest)
+		http.Error(w, "chatID is required", http.StatusBadRequest)
 		return
 	}
 

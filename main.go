@@ -8,11 +8,14 @@ import (
 	"github.com/HappYness-Project/ChatBackendServer/api"
 	"github.com/HappYness-Project/ChatBackendServer/configs"
 	"github.com/HappYness-Project/ChatBackendServer/dbs"
+	"github.com/HappYness-Project/ChatBackendServer/loggers"
 )
 
 func main() {
 	var current_env = os.Getenv("APP_ENV")
+	fmt.Println("Current Environment : " + current_env)
 	env := configs.InitConfig(current_env)
+	logger := loggers.Setup(env)
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s timezone=UTC connect_timeout=5 ",
 		env.DBHost, env.DBPort, env.DBUser, env.DBPwd, env.DBName)
 	if current_env == "local" || current_env == "" {
@@ -20,17 +23,18 @@ func main() {
 	} else {
 		connStr += "sslmode=require"
 	}
-	fmt.Println("Database connection string: " + connStr)
+
+	logger.Info().Msg("Database connection string: " + connStr)
 	database, err := dbs.ConnectToDb(connStr)
 	if err != nil {
-		fmt.Println("Unable to connect to the database." + err.Error())
+		logger.Error().Err(err).Msg("Unable to connect to the database.")
 		return
 	}
 
-	server := api.NewApiServer(fmt.Sprintf("%s:%s", env.Host, env.Port), database)
+	server := api.NewApiServer(fmt.Sprintf("%s:%s", env.Host, env.Port), database, logger)
 	r := server.Setup()
 	if err := server.Run(r); err != nil {
-		fmt.Println("Unable to set up the server." + err.Error())
+		logger.Error().Err(err).Msg("Unable to set up the server.")
 		return
 	}
 }
