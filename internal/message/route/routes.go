@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/HappYness-Project/ChatBackendServer/common"
 	domain "github.com/HappYness-Project/ChatBackendServer/internal/message/domain"
 
 	chatRepo "github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
@@ -34,17 +35,22 @@ func NewHandler(repo msgRepo.MessageRepo, chatRepo chatRepo.ChatRepo) *Handler {
 
 func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Route("/api", func(r chi.Router) {
-		r.Get("/ws", h.HandleConnections)
+		r.Get("/ws/user-groups/{groupID}", h.HandleConnections)
 	})
 }
 
 func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
+	groupId, err := strconv.Atoi(chi.URLParam(r, "groupID"))
+	if err != nil {
+		// response.ErrorResponse(w, http.StatusBadRequest, *(response.New(constants.InvalidParameter, "Invalid Group ID")))
+		return
+	}
+
 	// token := r.URL.Query().Get("token")
 	// if token == "" {
 	// 	http.Error(w, "Missing authentication token", http.StatusUnauthorized)
 	// 	return
 	// }
-
 	// if !validateJWTToken(token) {
 	// 	http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 	// 	return
@@ -57,7 +63,7 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	clients[conn] = true
-	chat, err := h.chatRepo.GetChatByUserGroupId(1)
+	chat, err := h.chatRepo.GetChatByUserGroupId(groupId)
 	if err != nil {
 		fmt.Println("Error getting chat by user group ID:", err)
 		delete(clients, conn)
@@ -134,7 +140,7 @@ func (h *Handler) GetMessagesByChatID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteJsonWithEncode(w, http.StatusOK, map[string]interface{}{
+	common.WriteJsonWithEncode(w, http.StatusOK, map[string]interface{}{
 		"messages": messages,
 		"count":    len(messages),
 	})

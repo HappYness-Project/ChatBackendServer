@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/HappYness-Project/ChatBackendServer/common"
 	chatRepo "github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
 	messageRepo "github.com/HappYness-Project/ChatBackendServer/internal/message/repository"
 	"github.com/HappYness-Project/ChatBackendServer/internal/message/route"
@@ -55,5 +56,5 @@ func Home(w http.ResponseWriter, r *http.Request) {
 		Message: "Message Service server",
 		Version: "1.0.0",
 	}
-	route.WriteJsonWithEncode(w, http.StatusOK, payload)
+	common.WriteJsonWithEncode(w, http.StatusOK, payload)
 }
