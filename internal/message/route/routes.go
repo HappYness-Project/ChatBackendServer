@@ -8,6 +8,7 @@ import (
 	"github.com/HappYness-Project/ChatBackendServer/common"
 	domain "github.com/HappYness-Project/ChatBackendServer/internal/message/domain"
 	"github.com/HappYness-Project/ChatBackendServer/loggers"
+	"github.com/golang-jwt/jwt/v5"
 
 	chatRepo "github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
 	msgRepo "github.com/HappYness-Project/ChatBackendServer/internal/message/repository"
@@ -19,15 +20,17 @@ type Handler struct {
 	messageRepo msgRepo.MessageRepo
 	chatRepo    chatRepo.ChatRepo
 	wsManager   *WebSocketManager
+	jwtSecret   []byte
 }
 
-func NewHandler(logger *loggers.AppLogger, repo msgRepo.MessageRepo, chatRepo chatRepo.ChatRepo) *Handler {
+func NewHandler(logger *loggers.AppLogger, repo msgRepo.MessageRepo, chatRepo chatRepo.ChatRepo, secretKey string) *Handler {
 	wsManager := NewWebSocketManager()
 	handler := &Handler{
 		logger:      logger,
 		messageRepo: repo,
 		chatRepo:    chatRepo,
 		wsManager:   wsManager,
+		jwtSecret:   []byte(secretKey),
 	}
 	go handler.HandleMessages()
 	return handler
@@ -41,8 +44,30 @@ func (h *Handler) RegisterRoutes(router chi.Router) {
 }
 
 func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		h.logger.Error().Msg("Missing jwt token")
+		common.ErrorResponse(w, http.StatusUnauthorized, common.ProblemDetails{
+			Title:     "Unauthorized",
+			ErrorCode: "AuthenticationFailure",
+			Detail:    "Missing authentication token",
+		})
+		return
+	}
+
+	if !h.validateJWTToken(token) {
+		h.logger.Error().Msg("Invalid jwt token")
+		common.ErrorResponse(w, http.StatusUnauthorized, common.ProblemDetails{
+			Title:     "Unauthorized",
+			ErrorCode: "AuthenticationFailure",
+			Detail:    "Invalid authentication token",
+		})
+		return
+	}
+
 	groupId, err := strconv.Atoi(chi.URLParam(r, "groupID"))
 	if err != nil {
+		h.logger.Error().Msg("JWT token validation failure")
 		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
 			Title:     "Invalid Parameter",
 			ErrorCode: "Invalid Group ID",
@@ -50,19 +75,9 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
-	// token := r.URL.Query().Get("token")
-	// if token == "" {
-	// 	http.Error(w, "Missing authentication token", http.StatusUnauthorized)
-	// 	return
-	// }
-	// if !validateJWTToken(token) {
-	// 	http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
-	// 	return
-	// }
 	conn, err := h.wsManager.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println("Error upgrading:", err)
+		h.logger.Error().Err(err).Msg(err.Error())
 		return
 	}
 	defer h.wsManager.RemoveClient(conn)
@@ -136,4 +151,26 @@ func (h *Handler) GetMessagesByChatID(w http.ResponseWriter, r *http.Request) {
 		"messages": messages,
 		"count":    len(messages),
 	})
+}
+func (h *Handler) validateJWTToken(tokenString string) bool {
+	// TODO: Implement real JWT validation
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodHS512 {
+			return nil, fmt.Errorf("unexpected signing method: %v, expected HS512", token.Header["alg"])
+		}
+		return h.jwtSecret, nil
+	})
+
+	if err != nil {
+		h.logger.Error().Err(err).Msg("JWT parsing error")
+		return false
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		h.logger.Info().Interface("claims", claims).Msg("JWT token validated successfully")
+		return true
+	}
+
+	h.logger.Error().Msg("Invalid JWT token claims")
+	return false
 }

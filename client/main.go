@@ -29,13 +29,18 @@ func main() {
 	scanner.Scan()
 	username := strings.TrimSpace(scanner.Text())
 
+	scanner = bufio.NewScanner(os.Stdin)
+	fmt.Print("Enter jwt token: ")
+	scanner.Scan()
+	token := strings.TrimSpace(scanner.Text())
+
 	if username == "" {
 		fmt.Println("Username cannot be empty!")
 		return
 	}
 
 	// Server URL
-	serverURL := "ws://localhost:4545/api/ws/user-groups/1"
+	serverURL := "ws://localhost:4545/api/ws/user-groups/1?token=" + token
 
 	// Connect to WebSocket server
 	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)

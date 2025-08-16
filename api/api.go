@@ -14,17 +14,19 @@ import (
 )
 
 type ApiServer struct {
-	addr   string
-	db     *sql.DB
-	logger *loggers.AppLogger
+	addr      string
+	secretKey string
+	db        *sql.DB
+	logger    *loggers.AppLogger
 }
 
-func NewApiServer(addr string, db *sql.DB, logger *loggers.AppLogger) *ApiServer {
+func NewApiServer(addr string, secretKey string, db *sql.DB, logger *loggers.AppLogger) *ApiServer {
 
 	return &ApiServer{
-		addr:   addr,
-		db:     db,
-		logger: logger,
+		addr:      addr,
+		secretKey: secretKey,
+		db:        db,
+		logger:    logger,
 	}
 }
 
@@ -36,7 +38,7 @@ func (s *ApiServer) Setup() *chi.Mux {
 
 	mux.Get("/", Home)
 	mux.Get("/health", Home)
-	msgHandler := route.NewHandler(s.logger, *repo, *chatRepo)
+	msgHandler := route.NewHandler(s.logger, *repo, *chatRepo, s.secretKey)
 
 	mux.Group(func(r chi.Router) {
 		msgHandler.RegisterRoutes(r)

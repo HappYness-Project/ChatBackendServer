@@ -20,6 +20,9 @@ type Env struct {
 	DBUser string `mapstructure:"DB_USER"`
 	DBPwd  string `mapstructure:"DB_PWD"`
 	DBName string `mapstructure:"DB_NAME"`
+
+	AccessTokenSecret  string `mapstructure:"ACCESS_TOKEN_SECRET"`
+	RefreshTokenSecret string `mapstructure:"REFRESH_TOKEN_SECRET"`
 }
 
 func InitConfig(envString string) Env {
@@ -39,6 +42,8 @@ func InitConfig(envString string) Env {
 		env.DBPort = os.Getenv("DB_PORT")
 		env.DBUser = os.Getenv("DB_USER")
 		env.DBPwd = os.Getenv("DB_PWD")
+		env.AccessTokenSecret = os.Getenv("ACCESS_TOKEN_SECRET")
+		env.RefreshTokenSecret = os.Getenv("ACCESS_TOKEN_SECRET")
 		return env
 	}
 	err := viper.ReadInConfig()
