@@ -20,6 +20,8 @@ type Message struct {
 	MessageType string    `json:"message_type"`
 	CreatedAt   time.Time `json:"created_at"`
 	ReadStatus  bool      `json:"read_status"`
+	IsEdited    bool      `json:"is_edited"`
+	// We might need to update group Id here.
 }
 
 func main() {
@@ -40,7 +42,7 @@ func main() {
 	}
 
 	// Server URL
-	serverURL := "ws://localhost:4545/api/ws/user-groups/1?token=" + token
+	serverURL := "ws://localhost:4545/api/user-groups/1/ws?token=" + token
 
 	// Connect to WebSocket server
 	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)

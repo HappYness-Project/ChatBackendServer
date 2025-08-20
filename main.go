@@ -1,6 +1,5 @@
 package main
 
-// the code below is from https://medium.com/@parvjn616/building-a-websocket-chat-application-in-go-388fff758575
 import (
 	"fmt"
 	"os"

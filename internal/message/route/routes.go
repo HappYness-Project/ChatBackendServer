@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/HappYness-Project/ChatBackendServer/common"
 	domain "github.com/HappYness-Project/ChatBackendServer/internal/message/domain"
@@ -38,7 +39,7 @@ func NewHandler(logger *loggers.AppLogger, repo msgRepo.MessageRepo, chatRepo ch
 
 func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Route("/api", func(r chi.Router) {
-		r.Get("/ws/user-groups/{groupID}", h.HandleConnections)
+		r.Get("/user-groups/{groupID}/ws", h.HandleConnections)
 		r.Get("/chats/{chatID}/messages", h.GetMessagesByChatID)
 	})
 }
@@ -97,6 +98,7 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		msg.ChatID = chat.Id
+		msg.CreatedAt = time.Now().UTC()
 		msg.MessageType = "text"
 
 		h.wsManager.BroadcastMessage(msg)
