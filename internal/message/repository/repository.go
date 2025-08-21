@@ -9,6 +9,7 @@ import (
 type MessageRepository interface {
 	Create(message domain.Message) error
 	GetByChatID(chatID string, limit, offset int) ([]domain.Message, error)
+	GetByGroupId(groupID int, limit, offset int) ([]domain.Message, error)
 	GetByUserGroup(userIDs []string, limit, offset int) ([]domain.Message, error)
 }
 
