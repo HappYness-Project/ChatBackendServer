@@ -111,7 +111,7 @@ func (h *Handler) HandleMessages() {
 		if err := h.messageRepo.Create(msg); err != nil {
 			h.logger.Error().Err(err).Msg("Unable to create a message")
 		}
-		fmt.Println(msg.Content)
+		fmt.Println("Updated Message: " + msg.Content)
 
 		h.wsManager.SendToClients(msg, h.logger)
 	}

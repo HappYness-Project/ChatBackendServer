@@ -33,7 +33,7 @@ func (r *MessageRepo) GetByChatID(chatID string, limit, offset int) ([]domain.Me
 		SELECT id, chat_id, sender_id, content, message_type, created_at, read_status
 		FROM message
 		WHERE chat_id = $1
-		ORDER BY created_at DESC
+		ORDER BY created_at ASC
 		LIMIT $2 OFFSET $3
 	`
 
@@ -66,7 +66,7 @@ func (r *MessageRepo) GetByUserGroup(userIDs []string, limit, offset int) ([]dom
 		FROM message m
 		INNER JOIN chat_participants cp ON m.chat_id = cp.chat_id
 		WHERE cp.user_id = ANY($1)
-		ORDER BY m.created_at DESC
+		ORDER BY m.created_at ASC
 		LIMIT $2 OFFSET $3
 	`
 
