@@ -25,7 +25,7 @@ type Handler struct {
 }
 
 func NewHandler(logger *loggers.AppLogger, repo msgRepo.MessageRepo, chatRepo chatRepo.ChatRepo, secretKey string) *Handler {
-	wsManager := NewWebSocketManager()
+	wsManager := NewWebSocketManager(logger)
 	handler := &Handler{
 		logger:      logger,
 		messageRepo: repo,
@@ -39,26 +39,60 @@ func NewHandler(logger *loggers.AppLogger, repo msgRepo.MessageRepo, chatRepo ch
 
 func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Route("/api", func(r chi.Router) {
-		r.Get("/user-groups/{groupID}/ws", h.HandleConnections)
+		r.Get("/user-groups/{groupID}/ws", h.HandleConnectionsByGroupId)
+		r.Get("/chats/{chatID}/ws", h.HandleConnectionsByChatID)
 		r.Get("/chats/{chatID}/messages", h.GetMessagesByChatID)
 		r.Get("/user-groups/{groupID}/messages", h.GetMessagesByGroupID)
 	})
 }
 
-func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		h.logger.Error().Msg("Missing jwt token")
+func (h *Handler) HandleConnectionsByChatID(w http.ResponseWriter, r *http.Request) {
+	if !h.authenticateRequest(w, r) {
 		common.ErrorResponse(w, http.StatusUnauthorized, common.ProblemDetails{
 			Title:     "Unauthorized",
 			ErrorCode: "AuthenticationFailure",
-			Detail:    "Missing authentication token",
+			Detail:    "Invalid authentication token",
 		})
 		return
 	}
 
-	if !h.validateJWTToken(token) {
-		h.logger.Error().Msg("Invalid jwt token")
+	chatID := chi.URLParam(r, "chatID")
+	if chatID == "" {
+		http.Error(w, "chatID is required", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := h.wsManager.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		h.logger.Error().Err(err).Msg(err.Error())
+		return
+	}
+	defer h.wsManager.RemoveClient(conn)
+
+	h.wsManager.AddClient(conn)
+	chat, err := h.chatRepo.GetChatById(chatID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Error occurred during getting chat by user group. " + err.Error())
+		return
+	}
+
+	for {
+		var msg domain.Message
+		err := conn.ReadJSON(&msg)
+		if err != nil {
+			h.logger.Error().Err(err).Msg("Error occurred during reading message. " + err.Error())
+			return
+		}
+		msg.ChatID = chat.Id
+		msg.CreatedAt = time.Now().UTC()
+		msg.MessageType = "text"
+
+		h.wsManager.BroadcastMessage(msg)
+	}
+}
+
+func (h *Handler) HandleConnectionsByGroupId(w http.ResponseWriter, r *http.Request) {
+	if !h.authenticateRequest(w, r) {
 		common.ErrorResponse(w, http.StatusUnauthorized, common.ProblemDetails{
 			Title:     "Unauthorized",
 			ErrorCode: "AuthenticationFailure",
@@ -110,9 +144,10 @@ func (h *Handler) HandleMessages() {
 		msg := <-h.wsManager.broadcast
 		if err := h.messageRepo.Create(msg); err != nil {
 			h.logger.Error().Err(err).Msg("Unable to create a message")
+			return
 		}
-		fmt.Println("Updated Message: " + msg.Content)
-
+		fmt.Printf("Broadcasting message to %d clients\n", len(h.wsManager.clients))
+		fmt.Printf("[%s] Sent a message: %s", msg.SenderID, msg.Content)
 		h.wsManager.SendToClients(msg, h.logger)
 	}
 }
@@ -213,6 +248,19 @@ func (h *Handler) GetMessagesByGroupID(w http.ResponseWriter, r *http.Request) {
 		"messages": messages,
 		"count":    len(messages),
 	})
+}
+func (h *Handler) authenticateRequest(_ http.ResponseWriter, r *http.Request) bool {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		h.logger.Error().Msg("Missing jwt token")
+		return false
+	}
+
+	if !h.validateJWTToken(token) {
+		h.logger.Error().Msg("Invalid jwt token")
+		return false
+	}
+	return true
 }
 
 func (h *Handler) validateJWTToken(tokenString string) bool {

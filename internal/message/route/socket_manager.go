@@ -15,9 +15,10 @@ type WebSocketManager struct {
 	broadcast chan domain.Message
 	upgrader  websocket.Upgrader
 	mutex     sync.RWMutex
+	logger    *loggers.AppLogger
 }
 
-func NewWebSocketManager() *WebSocketManager {
+func NewWebSocketManager(logger *loggers.AppLogger) *WebSocketManager {
 	return &WebSocketManager{
 		clients:   make(map[*websocket.Conn]bool),
 		broadcast: make(chan domain.Message, 256),
@@ -28,6 +29,7 @@ func NewWebSocketManager() *WebSocketManager {
 				return true
 			},
 		},
+		logger: logger,
 	}
 }
 
@@ -35,6 +37,8 @@ func (wsm *WebSocketManager) AddClient(conn *websocket.Conn) {
 	wsm.mutex.Lock()
 	defer wsm.mutex.Unlock()
 	wsm.clients[conn] = true
+	wsm.logger.Info().Msg("New client connected - clients: " + conn.LocalAddr().String())
+
 }
 
 func (wsm *WebSocketManager) RemoveClient(conn *websocket.Conn) {
