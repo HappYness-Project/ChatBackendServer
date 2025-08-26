@@ -43,6 +43,7 @@ func (h *Handler) RegisterRoutes(router chi.Router) {
 		r.Get("/chats/{chatID}/ws", h.HandleConnectionsByChatID)
 		r.Get("/chats/{chatID}/messages", h.GetMessagesByChatID)
 		r.Get("/user-groups/{groupID}/messages", h.GetMessagesByGroupID)
+		r.Get("/user-groups/{groupID}/chat", h.GetChatByGroupID)
 	})
 }
 
@@ -248,6 +249,36 @@ func (h *Handler) GetMessagesByGroupID(w http.ResponseWriter, r *http.Request) {
 		"messages": messages,
 		"count":    len(messages),
 	})
+}
+
+func (h *Handler) GetChatByGroupID(w http.ResponseWriter, r *http.Request) {
+	groupIDStr := chi.URLParam(r, "groupID")
+	if groupIDStr == "" {
+		http.Error(w, "groupID is required", http.StatusBadRequest)
+		return
+	}
+
+	groupID, err := strconv.Atoi(groupIDStr)
+	if err != nil {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Parameter",
+			ErrorCode: "Invalid Group ID",
+			Detail:    "The provided groupID is not a valid integer.",
+		})
+		return
+	}
+
+	chat, err := h.chatRepo.GetChatByGroupID(groupID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to retrieve chat by groupID")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred during getting chat by group ID",
+		})
+		return
+	}
+
+	common.WriteJsonWithEncode(w, http.StatusOK, chat)
 }
 func (h *Handler) authenticateRequest(_ http.ResponseWriter, r *http.Request) bool {
 	token := r.URL.Query().Get("token")

@@ -9,6 +9,7 @@ import (
 type ChatRepository interface {
 	GetChatByUserGroupId(userGroupId int) (*domain.Chat, error)
 	GetChatById(chatId string) (*domain.Chat, error)
+	GetChatByGroupID(groupID int) (*domain.Chat, error)
 }
 
 type ChatRepo struct {
@@ -44,6 +45,28 @@ func (r *ChatRepo) GetChatByUserGroupId(userGroupId int) (*domain.Chat, error) {
 	rows, err := r.db.Query(`SELECT id, type, usergroup_id, container_id, created_at
 							FROM public.chat
 							WHERE usergroup_id = $1 and type = 'group'`, userGroupId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	chat := new(domain.Chat)
+	for rows.Next() {
+		chat, err = scanRowsIntoChat(rows)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return chat, nil
+}
+
+func (r *ChatRepo) GetChatByGroupID(groupID int) (*domain.Chat, error) {
+	rows, err := r.db.Query(`SELECT id, type, usergroup_id, container_id, created_at
+							FROM public.chat
+							WHERE usergroup_id = $1`, groupID)
 	if err != nil {
 		return nil, err
 	}
