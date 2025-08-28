@@ -10,6 +10,7 @@ import (
 	domain "github.com/HappYness-Project/ChatBackendServer/internal/message/domain"
 	"github.com/HappYness-Project/ChatBackendServer/loggers"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	chatRepo "github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
 	msgRepo "github.com/HappYness-Project/ChatBackendServer/internal/message/repository"
@@ -131,7 +132,6 @@ func (h *Handler) HandleConnectionsByGroupId(w http.ResponseWriter, r *http.Requ
 		err := conn.ReadJSON(&msg)
 		if err != nil {
 			h.logger.Error().Err(err).Msg("Error occurred during reading message. " + err.Error())
-			return
 		}
 		msg.ChatID = chat.Id
 		msg.CreatedAt = time.Now().UTC()
@@ -143,6 +143,8 @@ func (h *Handler) HandleConnectionsByGroupId(w http.ResponseWriter, r *http.Requ
 func (h *Handler) HandleMessages() {
 	for {
 		msg := <-h.wsManager.broadcast
+		id, _ := uuid.NewV7()
+		msg.ID = id.String()
 		if err := h.messageRepo.Create(msg); err != nil {
 			h.logger.Error().Err(err).Msg("Unable to create a message")
 			return

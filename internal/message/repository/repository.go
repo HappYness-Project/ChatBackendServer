@@ -22,9 +22,9 @@ func NewRepository(db *sql.DB) *MessageRepo {
 }
 func (r *MessageRepo) Create(message domain.Message) error {
 	query := `
-		INSERT INTO message (chat_id, sender_id, content, message_type, created_at)
-		VALUES ($1, $2, $3, $4, $5)`
-	_, err := r.db.Exec(query, message.ChatID, message.SenderID, message.Content, message.MessageType, message.CreatedAt)
+		INSERT INTO message (id, chat_id, sender_id, content, message_type, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := r.db.Exec(query, message.ID, message.ChatID, message.SenderID, message.Content, message.MessageType, message.CreatedAt)
 
 	return err
 }
