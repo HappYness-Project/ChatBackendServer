@@ -1,6 +1,6 @@
 DEV_ENV_SETUP_FOLDER ?= ./dev-env
 DOCKER_COMPOSE_FILE ?= $(DEV_ENV_SETUP_FOLDER)/docker-compose.yml
-CONTAINER_NAME ?= "message-containers"
+CONTAINER_NAME ?= "chat-containers"
 VERSION ?= $(shell git rev-parse --short HEAD)
 
 help:

@@ -57,6 +57,7 @@ func InitConfig(envString string) Env {
 	}
 	if envString == "" {
 		env.DBHost = "localhost"
+		env.DBPort = "8020"
 	}
 	return env
 }
