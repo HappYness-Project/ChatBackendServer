@@ -60,6 +60,7 @@ func (h *Handler) HandleConnectionsByChatID(w http.ResponseWriter, r *http.Reque
 
 	chatID := chi.URLParam(r, "chatID")
 	if chatID == "" {
+		h.logger.Error().Msg("chatID is required")
 		http.Error(w, "chatID is required", http.StatusBadRequest)
 		return
 	}
@@ -147,10 +148,11 @@ func (h *Handler) HandleMessages() {
 		msg.ID = id.String()
 		if err := h.messageRepo.Create(msg); err != nil {
 			h.logger.Error().Err(err).Msg("Unable to create a message")
-			return
+			continue
 		}
 		fmt.Printf("Broadcasting message to %d clients\n", len(h.wsManager.clients))
-		fmt.Printf("[%s] Sent a message: %s", msg.SenderID, msg.Content)
+		fmt.Printf("[ChatID:%s]|[SenderID:%s]|Message: %s\n", msg.ChatID, msg.SenderID, msg.Content)
+		fmt.Println("-------------------------------------------------------------")
 		h.wsManager.SendToClients(msg, h.logger)
 	}
 }
