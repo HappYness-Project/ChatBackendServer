@@ -3,6 +3,7 @@ package route
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 
 	domain "github.com/HappYness-Project/ChatBackendServer/internal/message/domain"
@@ -46,6 +47,7 @@ func (wsm *WebSocketManager) RemoveClient(conn *websocket.Conn) {
 	defer wsm.mutex.Unlock()
 	delete(wsm.clients, conn)
 	conn.Close()
+	wsm.logger.Info().Msg("Client disconnected - client number: " + strconv.Itoa(len(wsm.clients)))
 }
 
 func (wsm *WebSocketManager) BroadcastMessage(msg domain.Message) {

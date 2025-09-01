@@ -11,6 +11,7 @@ import (
 	"github.com/HappYness-Project/ChatBackendServer/loggers"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 
 	chatRepo "github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
 	msgRepo "github.com/HappYness-Project/ChatBackendServer/internal/message/repository"
@@ -83,8 +84,17 @@ func (h *Handler) HandleConnectionsByChatID(w http.ResponseWriter, r *http.Reque
 		var msg domain.Message
 		err := conn.ReadJSON(&msg)
 		if err != nil {
-			h.logger.Error().Err(err).Msg("Error occurred during reading message. " + err.Error())
-			return
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				h.logger.Info().Msg("Client disconnected normally")
+				return
+			}
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				h.logger.Error().Err(err).Msg("Unexpected websocket close")
+				return
+			} else {
+				h.logger.Error().Err(err).Msg("Error reading websocket message")
+				return
+			}
 		}
 		msg.ChatID = chat.Id
 		msg.CreatedAt = time.Now().UTC()
