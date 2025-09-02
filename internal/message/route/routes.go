@@ -40,13 +40,9 @@ func NewHandler(logger *loggers.AppLogger, repo msgRepo.MessageRepo, chatRepo ch
 }
 
 func (h *Handler) RegisterRoutes(router chi.Router) {
-	router.Route("/api", func(r chi.Router) {
-		r.Get("/user-groups/{groupID}/ws", h.HandleConnectionsByGroupId)
-		r.Get("/chats/{chatID}/ws", h.HandleConnectionsByChatID)
-		r.Get("/chats/{chatID}/messages", h.GetMessagesByChatID)
-		r.Get("/user-groups/{groupID}/messages", h.GetMessagesByGroupID)
-		r.Get("/user-groups/{groupID}/chat", h.GetChatByGroupID)
-	})
+	router.Get("/api/chats/{chatID}/ws", h.HandleConnectionsByChatID)
+	router.Get("/api/chats/{chatID}/messages", h.GetMessagesByChatID)
+	router.Get("/api/user-groups/{groupID}/messages", h.GetMessagesByGroupID)
 }
 
 func (h *Handler) HandleConnectionsByChatID(w http.ResponseWriter, r *http.Request) {
@@ -104,53 +100,6 @@ func (h *Handler) HandleConnectionsByChatID(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (h *Handler) HandleConnectionsByGroupId(w http.ResponseWriter, r *http.Request) {
-	if !h.authenticateRequest(w, r) {
-		common.ErrorResponse(w, http.StatusUnauthorized, common.ProblemDetails{
-			Title:     "Unauthorized",
-			ErrorCode: "AuthenticationFailure",
-			Detail:    "Invalid authentication token",
-		})
-		return
-	}
-
-	groupId, err := strconv.Atoi(chi.URLParam(r, "groupID"))
-	if err != nil {
-		h.logger.Error().Msg("JWT token validation failure")
-		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
-			Title:     "Invalid Parameter",
-			ErrorCode: "Invalid Group ID",
-			Detail:    "The provided groupID is not a valid integer.",
-		})
-		return
-	}
-	conn, err := h.wsManager.upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		h.logger.Error().Err(err).Msg(err.Error())
-		return
-	}
-	defer h.wsManager.RemoveClient(conn)
-
-	h.wsManager.AddClient(conn)
-	chat, err := h.chatRepo.GetChatByUserGroupId(groupId)
-	if err != nil {
-		h.logger.Error().Err(err).Msg("Error occurred during getting chat by user group. " + err.Error())
-		return
-	}
-
-	for {
-		var msg domain.Message
-		err := conn.ReadJSON(&msg)
-		if err != nil {
-			h.logger.Error().Err(err).Msg("Error occurred during reading message. " + err.Error())
-		}
-		msg.ChatID = chat.Id
-		msg.CreatedAt = time.Now().UTC()
-		msg.MessageType = "text"
-
-		h.wsManager.BroadcastMessage(msg)
-	}
-}
 func (h *Handler) HandleMessages() {
 	for {
 		msg := <-h.wsManager.broadcast
@@ -265,35 +214,6 @@ func (h *Handler) GetMessagesByGroupID(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) GetChatByGroupID(w http.ResponseWriter, r *http.Request) {
-	groupIDStr := chi.URLParam(r, "groupID")
-	if groupIDStr == "" {
-		http.Error(w, "groupID is required", http.StatusBadRequest)
-		return
-	}
-
-	groupID, err := strconv.Atoi(groupIDStr)
-	if err != nil {
-		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
-			Title:     "Invalid Parameter",
-			ErrorCode: "Invalid Group ID",
-			Detail:    "The provided groupID is not a valid integer.",
-		})
-		return
-	}
-
-	chat, err := h.chatRepo.GetChatByGroupID(groupID)
-	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to retrieve chat by groupID")
-		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
-			Title:  "Internal Server Error",
-			Detail: "Error occurred during getting chat by group ID",
-		})
-		return
-	}
-
-	common.WriteJsonWithEncode(w, http.StatusOK, chat)
-}
 func (h *Handler) authenticateRequest(_ http.ResponseWriter, r *http.Request) bool {
 	token := r.URL.Query().Get("token")
 	if token == "" {
