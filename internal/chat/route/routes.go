@@ -1,11 +1,13 @@
 package route
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/HappYness-Project/ChatBackendServer/common"
+	"github.com/HappYness-Project/ChatBackendServer/internal/chat/domain"
 	"github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
 	"github.com/HappYness-Project/ChatBackendServer/loggers"
 	"github.com/go-chi/chi/v5"
@@ -29,6 +31,9 @@ func NewHandler(logger *loggers.AppLogger, chatRepo repository.ChatRepo, secretK
 func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Get("/api/chats/{chatID}", h.GetChatById)
 	router.Get("/api/user-groups/{groupID}/chat", h.GetChatByGroupID)
+	router.Post("/api/chats", h.CreateChat)
+	router.Delete("/api/chats/{chatID}", h.RemoveChat)
+
 }
 
 func (h *Handler) GetChatById(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +97,73 @@ func (h *Handler) GetChatByGroupID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	common.WriteJsonWithEncode(w, http.StatusOK, chat)
+}
+
+func (h *Handler) CreateChat(w http.ResponseWriter, r *http.Request) {
+	var chat domain.Chat
+
+	if err := json.NewDecoder(r.Body).Decode(&chat); err != nil {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Request Body",
+			ErrorCode: "InvalidJSON",
+			Detail:    "Unable to decode request body as JSON",
+		})
+		return
+	}
+	createdChat, err := h.chatRepo.CreateChat(&chat)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to create chat")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while creating chat",
+		})
+		return
+	}
+
+	common.WriteJsonWithEncode(w, http.StatusCreated, createdChat)
+}
+
+func (h *Handler) RemoveChat(w http.ResponseWriter, r *http.Request) {
+	chatID := chi.URLParam(r, "chatID")
+	if chatID == "" {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Parameter",
+			ErrorCode: "MissingChatID",
+			Detail:    "chatID is required",
+		})
+		return
+	}
+
+	chat, err := h.chatRepo.GetChatById(chatID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to retrieve chat by ID")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while retrieving chat",
+		})
+		return
+	}
+
+	if chat.Id == "" {
+		common.ErrorResponse(w, http.StatusNotFound, common.ProblemDetails{
+			Title:     "Not Found",
+			ErrorCode: "ChatNotFound",
+			Detail:    "Chat not found with the provided ID",
+		})
+		return
+	}
+
+	err = h.chatRepo.DeleteChat(chatID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to delete chat")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while deleting chat",
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) validateJWTToken(tokenString string) bool {
