@@ -33,6 +33,7 @@ func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Get("/api/user-groups/{groupID}/chat", h.GetChatByGroupID)
 	router.Post("/api/chats", h.CreateChat)
 	router.Delete("/api/chats/{chatID}", h.RemoveChat)
+	router.Get("/api/chats/{chatID}/chat-participants", h.GetChatParticipants)
 
 }
 
@@ -164,6 +165,53 @@ func (h *Handler) RemoveChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) GetChatParticipants(w http.ResponseWriter, r *http.Request) {
+	chatID := chi.URLParam(r, "chatID")
+	if chatID == "" {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Parameter",
+			ErrorCode: "MissingChatID",
+			Detail:    "chatID is required",
+		})
+		return
+	}
+
+	// Verify chat exists first
+	chat, err := h.chatRepo.GetChatById(chatID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to retrieve chat by ID")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while retrieving chat",
+		})
+		return
+	}
+
+	if chat.Id == "" {
+		common.ErrorResponse(w, http.StatusNotFound, common.ProblemDetails{
+			Title:     "Not Found",
+			ErrorCode: "ChatNotFound",
+			Detail:    "Chat not found with the provided ID",
+		})
+		return
+	}
+
+	participants, err := h.chatRepo.GetChatParticipants(chatID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to retrieve chat participants")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while retrieving chat participants",
+		})
+		return
+	}
+
+	common.WriteJsonWithEncode(w, http.StatusOK, map[string]interface{}{
+		"participants": participants,
+		"count":        len(participants),
+	})
 }
 
 func (h *Handler) validateJWTToken(tokenString string) bool {

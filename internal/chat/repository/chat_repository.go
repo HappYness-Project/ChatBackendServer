@@ -14,6 +14,7 @@ type ChatRepository interface {
 	GetChatByGroupID(groupID int) (*domain.Chat, error)
 	CreateChat(chat *domain.Chat) (*domain.Chat, error)
 	DeleteChat(chatId string) error
+	GetChatParticipants(chatId string) ([]domain.ChatParticipant, error)
 }
 
 type ChatRepo struct {
@@ -113,6 +114,32 @@ func (r *ChatRepo) DeleteChat(chatId string) error {
 	return err
 }
 
+func (r *ChatRepo) GetChatParticipants(chatId string) ([]domain.ChatParticipant, error) {
+	rows, err := r.db.Query(`SELECT id, chat_id, user_id, joined_at, role, status
+							FROM public.chat_participant
+							WHERE chat_id = $1
+							ORDER BY joined_at ASC`, chatId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	participants := make([]domain.ChatParticipant, 0)
+	for rows.Next() {
+		participant, err := scanRowsIntoChatParticipant(rows)
+		if err != nil {
+			return nil, err
+		}
+		participants = append(participants, *participant)
+	}
+	
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return participants, nil
+}
+
 func scanRowsIntoChat(rows *sql.Rows) (*domain.Chat, error) {
 	chat := new(domain.Chat)
 	err := rows.Scan(
@@ -127,4 +154,21 @@ func scanRowsIntoChat(rows *sql.Rows) (*domain.Chat, error) {
 	}
 
 	return chat, nil
+}
+
+func scanRowsIntoChatParticipant(rows *sql.Rows) (*domain.ChatParticipant, error) {
+	participant := new(domain.ChatParticipant)
+	err := rows.Scan(
+		&participant.Id,
+		&participant.ChatId,
+		&participant.UserId,
+		&participant.JoinedAt,
+		&participant.Role,
+		&participant.Status,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return participant, nil
 }
