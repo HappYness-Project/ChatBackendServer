@@ -192,24 +192,21 @@ func TestChatRepository_CreateChat(t *testing.T) {
 
 	t.Run("should create group chat successfully", func(t *testing.T) {
 		userGroupID := 200
-		chat := &domain.Chat{
-			Type:        "group",
-			UserGroupId: &userGroupID,
-		}
+		chat, err := domain.NewChat(domain.ChatTypeGroup, &userGroupID, nil)
+		require.NoError(t, err)
 
 		createdChat, err := repo.CreateChat(chat)
 
 		require.NoError(t, err)
 		require.NotNil(t, createdChat)
 		assert.NotEmpty(t, createdChat.Id)
-		assert.Equal(t, "group", createdChat.Type)
+		assert.Equal(t, domain.ChatTypeGroup, createdChat.Type)
 		assert.NotNil(t, createdChat.UserGroupId)
 		assert.Equal(t, userGroupID, *createdChat.UserGroupId)
 		assert.Nil(t, createdChat.ContainerId)
 		assert.False(t, createdChat.CreatedAt.IsZero())
 		assert.True(t, createdChat.CreatedAt.After(time.Now().Add(-time.Minute)))
 
-		// Cleanup
 		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat.Id)
 	})
 }

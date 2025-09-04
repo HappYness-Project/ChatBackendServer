@@ -34,7 +34,7 @@ func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Post("/api/chats", h.CreateChat)
 	router.Delete("/api/chats/{chatID}", h.RemoveChat)
 	router.Get("/api/chats/{chatID}/chat-participants", h.GetChatParticipants)
-
+	router.Post("/api/chats/{chatID}/chat-participants", h.AddChatParticipant)
 }
 
 func (h *Handler) GetChatById(w http.ResponseWriter, r *http.Request) {
@@ -101,9 +101,8 @@ func (h *Handler) GetChatByGroupID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateChat(w http.ResponseWriter, r *http.Request) {
-	var chat domain.Chat
-
-	if err := json.NewDecoder(r.Body).Decode(&chat); err != nil {
+	var request CreateChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
 			Title:     "Invalid Request Body",
 			ErrorCode: "InvalidJSON",
@@ -111,7 +110,31 @@ func (h *Handler) CreateChat(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	createdChat, err := h.chatRepo.CreateChat(&chat)
+
+	chatType := domain.ChatTypeGroup
+	if request.Type != "" {
+		chatType = domain.ChatType(request.Type)
+	}
+	if !chatType.IsValid() {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Request",
+			ErrorCode: "InvalidChatType",
+			Detail:    "chat type must be 'private', 'group', or 'container'",
+		})
+		return
+	}
+
+	chat, err := domain.NewChat(chatType, request.UserGroupId, request.ContainerId)
+	if err != nil {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Request",
+			ErrorCode: "InvalidChatConfiguration",
+			Detail:    err.Error(),
+		})
+		return
+	}
+
+	createdChat, err := h.chatRepo.CreateChat(chat)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to create chat")
 		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
@@ -212,6 +235,99 @@ func (h *Handler) GetChatParticipants(w http.ResponseWriter, r *http.Request) {
 		"participants": participants,
 		"count":        len(participants),
 	})
+}
+
+func (h *Handler) AddChatParticipant(w http.ResponseWriter, r *http.Request) {
+	chatID := chi.URLParam(r, "chatID")
+	if chatID == "" {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Parameter",
+			ErrorCode: "MissingChatID",
+			Detail:    "chatID is required",
+		})
+		return
+	}
+
+	var request AddParticipantRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Request Body",
+			ErrorCode: "InvalidJSON",
+			Detail:    "Unable to decode request body as JSON",
+		})
+		return
+	}
+
+	if request.UserId == "" {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Request",
+			ErrorCode: "MissingUserId",
+			Detail:    "user_id is required",
+		})
+		return
+	}
+
+	chat, err := h.chatRepo.GetChatById(chatID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to retrieve chat by ID")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while retrieving chat",
+		})
+		return
+	}
+
+	if chat.Id == "" {
+		common.ErrorResponse(w, http.StatusNotFound, common.ProblemDetails{
+			Title:     "Not Found",
+			ErrorCode: "ChatNotFound",
+			Detail:    "Chat not found with the provided ID",
+		})
+		return
+	}
+
+	// Check if user is already a participant
+	isParticipant, err := h.chatRepo.IsUserParticipantInChat(chatID, request.UserId)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to check if user is participant")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while checking participant status",
+		})
+		return
+	}
+
+	if isParticipant {
+		common.ErrorResponse(w, http.StatusConflict, common.ProblemDetails{
+			Title:     "Conflict",
+			ErrorCode: "UserAlreadyParticipant",
+			Detail:    "User is already a participant in this chat",
+		})
+		return
+	}
+
+	// Create participant using domain constructor (includes validation)
+	participant, err := domain.NewChatParticipant(chatID, request.UserId, request.Role, request.Status)
+	if err != nil {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Request",
+			ErrorCode: "InvalidParticipantData",
+			Detail:    err.Error(),
+		})
+		return
+	}
+
+	createdParticipant, err := h.chatRepo.AddParticipantToChat(participant)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to add participant to chat")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while adding participant to chat",
+		})
+		return
+	}
+
+	common.WriteJsonWithEncode(w, http.StatusCreated, createdParticipant)
 }
 
 func (h *Handler) validateJWTToken(tokenString string) bool {

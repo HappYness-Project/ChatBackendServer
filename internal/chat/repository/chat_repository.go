@@ -15,6 +15,8 @@ type ChatRepository interface {
 	CreateChat(chat *domain.Chat) (*domain.Chat, error)
 	DeleteChat(chatId string) error
 	GetChatParticipants(chatId string) ([]domain.ChatParticipant, error)
+	AddParticipantToChat(participant *domain.ChatParticipant) (*domain.ChatParticipant, error)
+	IsUserParticipantInChat(chatId, userId string) (bool, error)
 }
 
 type ChatRepo struct {
@@ -91,17 +93,9 @@ func (r *ChatRepo) GetChatByGroupID(groupID int) (*domain.Chat, error) {
 }
 
 func (r *ChatRepo) CreateChat(chat *domain.Chat) (*domain.Chat, error) {
-	id, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
-	
-	chat.Id = id.String()
-	chat.CreatedAt = time.Now().UTC()
-	
-	_, err = r.db.Exec(`INSERT INTO public.chat (id, type, usergroup_id, container_id, created_at) 
+	_, err := r.db.Exec(`INSERT INTO public.chat (id, type, usergroup_id, container_id, created_at) 
 						VALUES ($1, $2, $3, $4, $5)`,
-		chat.Id, chat.Type, chat.UserGroupId, chat.ContainerId, chat.CreatedAt)
+		chat.Id, chat.Type.String(), chat.UserGroupId, chat.ContainerId, chat.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -140,11 +134,42 @@ func (r *ChatRepo) GetChatParticipants(chatId string) ([]domain.ChatParticipant,
 	return participants, nil
 }
 
+func (r *ChatRepo) IsUserParticipantInChat(chatId, userId string) (bool, error) {
+	var count int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM public.chat_participant 
+						  WHERE chat_id = $1 AND user_id = $2`, chatId, userId).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (r *ChatRepo) AddParticipantToChat(participant *domain.ChatParticipant) (*domain.ChatParticipant, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
+	
+	participant.Id = id.String()
+	participant.JoinedAt = time.Now().UTC()
+	
+	_, err = r.db.Exec(`INSERT INTO public.chat_participant (id, chat_id, user_id, joined_at, role, status) 
+						VALUES ($1, $2, $3, $4, $5, $6)`,
+		participant.Id, participant.ChatId, participant.UserId, participant.JoinedAt, 
+		participant.Role.String(), participant.Status.String())
+	if err != nil {
+		return nil, err
+	}
+	
+	return participant, nil
+}
+
 func scanRowsIntoChat(rows *sql.Rows) (*domain.Chat, error) {
 	chat := new(domain.Chat)
+	var typeStr string
 	err := rows.Scan(
 		&chat.Id,
-		&chat.Type,
+		&typeStr,
 		&chat.UserGroupId,
 		&chat.ContainerId,
 		&chat.CreatedAt,
@@ -153,22 +178,36 @@ func scanRowsIntoChat(rows *sql.Rows) (*domain.Chat, error) {
 		return nil, err
 	}
 
+	chat.Type = domain.ChatType(typeStr)
 	return chat, nil
 }
 
 func scanRowsIntoChatParticipant(rows *sql.Rows) (*domain.ChatParticipant, error) {
-	participant := new(domain.ChatParticipant)
-	err := rows.Scan(
-		&participant.Id,
-		&participant.ChatId,
-		&participant.UserId,
-		&participant.JoinedAt,
-		&participant.Role,
-		&participant.Status,
-	)
+	var id, chatId, userId string
+	var joinedAt time.Time
+	var roleStr, statusStr string
+	
+	err := rows.Scan(&id, &chatId, &userId, &joinedAt, &roleStr, &statusStr)
 	if err != nil {
 		return nil, err
 	}
 
-	return participant, nil
+	role, err := domain.NewParticipantRole(roleStr)
+	if err != nil {
+		return nil, err
+	}
+
+	status, err := domain.NewParticipantStatus(statusStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.ChatParticipant{
+		Id:       id,
+		ChatId:   chatId,
+		UserId:   userId,
+		JoinedAt: joinedAt,
+		Role:     role,
+		Status:   status,
+	}, nil
 }
