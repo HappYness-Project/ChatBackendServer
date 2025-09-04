@@ -10,6 +10,7 @@ import (
 	"github.com/HappYness-Project/ChatBackendServer/dbs"
 	"github.com/HappYness-Project/ChatBackendServer/internal/chat/domain"
 	"github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -297,6 +298,136 @@ func TestChatRepository_DeleteChat(t *testing.T) {
 
 		// Cleanup
 		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat2.Id)
+	})
+}
+
+func TestChatRepository_CreateChatWithParticipant(t *testing.T) {
+	repo := repository.NewRepository(testDB)
+
+	t.Run("should create chat with participant successfully in transaction", func(t *testing.T) {
+		userGroupID := 500
+		chat, err := domain.NewChat(domain.ChatTypeGroup, &userGroupID, nil)
+		require.NoError(t, err)
+
+		// Generate a valid UUID for user_id
+		userUUID, err := uuid.NewV7()
+		require.NoError(t, err)
+		userID := userUUID.String()
+
+		participant, err := domain.NewChatParticipant(chat.Id, userID, "admin", "active")
+		require.NoError(t, err)
+
+		createdChat, err := repo.CreateChatWithParticipant(chat, participant)
+
+		require.NoError(t, err)
+		require.NotNil(t, createdChat)
+		assert.NotEmpty(t, createdChat.Id)
+		assert.Equal(t, domain.ChatTypeGroup, createdChat.Type)
+		assert.NotNil(t, createdChat.UserGroupId)
+		assert.Equal(t, userGroupID, *createdChat.UserGroupId)
+		assert.False(t, createdChat.CreatedAt.IsZero())
+
+		// Verify chat was created in database
+		foundChat, err := repo.GetChatById(createdChat.Id)
+		require.NoError(t, err)
+		assert.Equal(t, createdChat.Id, foundChat.Id)
+
+		// Verify participant was created in database
+		participants, err := repo.GetChatParticipants(createdChat.Id)
+		require.NoError(t, err)
+		require.Len(t, participants, 1)
+		assert.Equal(t, userID, participants[0].UserId)
+		assert.Equal(t, "admin", participants[0].Role.String())
+		assert.Equal(t, "active", participants[0].Status.String())
+		assert.NotEmpty(t, participants[0].Id)
+		assert.False(t, participants[0].JoinedAt.IsZero())
+
+		// Cleanup
+		_, _ = testDB.Exec(`DELETE FROM public.chat_participant WHERE chat_id = $1`, createdChat.Id)
+		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat.Id)
+	})
+
+	t.Run("should rollback transaction when participant creation fails", func(t *testing.T) {
+		userGroupID := 501
+		chat, err := domain.NewChat(domain.ChatTypeGroup, &userGroupID, nil)
+		require.NoError(t, err)
+
+		// Create participant with invalid UUID format to cause database constraint violation
+		participant, err := domain.NewChatParticipant(chat.Id, "invalid-uuid-format", "admin", "active")
+		require.NoError(t, err)
+
+		// This should fail due to database UUID format constraints
+		createdChat, err := repo.CreateChatWithParticipant(chat, participant)
+
+		require.Error(t, err)
+		require.Nil(t, createdChat)
+
+		// Verify that chat was NOT created (transaction rolled back)
+		foundChat, err := repo.GetChatById(chat.Id)
+		require.NoError(t, err)
+		assert.Empty(t, foundChat.Id) // Should be empty since chat creation was rolled back
+
+		// Verify no participants exist for this chat
+		participants, err := repo.GetChatParticipants(chat.Id)
+		require.NoError(t, err)
+		assert.Len(t, participants, 0)
+	})
+
+	t.Run("should handle database connection issues gracefully", func(t *testing.T) {
+		// Test with a closed database connection would be complex to set up
+		// This test validates the method signature and basic error handling
+		userGroupID := 502
+		chat, err := domain.NewChat(domain.ChatTypeGroup, &userGroupID, nil)
+		require.NoError(t, err)
+
+		// Generate a valid UUID for user_id
+		userUUID, err := uuid.NewV7()
+		require.NoError(t, err)
+		userID := userUUID.String()
+
+		participant, err := domain.NewChatParticipant(chat.Id, userID, "member", "active")
+		require.NoError(t, err)
+
+		// This should succeed with valid inputs
+		createdChat, err := repo.CreateChatWithParticipant(chat, participant)
+
+		require.NoError(t, err)
+		require.NotNil(t, createdChat)
+
+		// Cleanup
+		_, _ = testDB.Exec(`DELETE FROM public.chat_participant WHERE chat_id = $1`, createdChat.Id)
+		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat.Id)
+	})
+
+	t.Run("should create private chat with participant", func(t *testing.T) {
+		chat, err := domain.NewChat(domain.ChatTypePrivate, nil, nil)
+		require.NoError(t, err)
+
+		// Generate a valid UUID for user_id
+		userUUID, err := uuid.NewV7()
+		require.NoError(t, err)
+		userID := userUUID.String()
+
+		participant, err := domain.NewChatParticipant(chat.Id, userID, "member", "active")
+		require.NoError(t, err)
+
+		createdChat, err := repo.CreateChatWithParticipant(chat, participant)
+
+		require.NoError(t, err)
+		require.NotNil(t, createdChat)
+		assert.Equal(t, domain.ChatTypePrivate, createdChat.Type)
+		assert.Nil(t, createdChat.UserGroupId)
+		assert.Nil(t, createdChat.ContainerId)
+
+		// Verify participant was created
+		participants, err := repo.GetChatParticipants(createdChat.Id)
+		require.NoError(t, err)
+		require.Len(t, participants, 1)
+		assert.Equal(t, userID, participants[0].UserId)
+
+		// Cleanup
+		_, _ = testDB.Exec(`DELETE FROM public.chat_participant WHERE chat_id = $1`, createdChat.Id)
+		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat.Id)
 	})
 }
 

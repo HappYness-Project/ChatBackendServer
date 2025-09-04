@@ -115,15 +115,6 @@ func (h *Handler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	if request.Type != "" {
 		chatType = domain.ChatType(request.Type)
 	}
-	if !chatType.IsValid() {
-		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
-			Title:     "Invalid Request",
-			ErrorCode: "InvalidChatType",
-			Detail:    "chat type must be 'private', 'group', or 'container'",
-		})
-		return
-	}
-
 	chat, err := domain.NewChat(chatType, request.UserGroupId, request.ContainerId)
 	if err != nil {
 		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
@@ -134,14 +125,40 @@ func (h *Handler) CreateChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdChat, err := h.chatRepo.CreateChat(chat)
-	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to create chat")
-		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
-			Title:  "Internal Server Error",
-			Detail: "Error occurred while creating chat",
-		})
-		return
+	var createdChat *domain.Chat
+
+	if request.ParticipantId != "" {
+		participant, err := domain.NewChatParticipant(chat.Id, request.ParticipantId, "admin", "active")
+		if err != nil {
+			h.logger.Error().Err(err).Msg("Failed to create chat participant")
+			common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+				Title:     "Invalid Request",
+				ErrorCode: "InvalidParticipantData",
+				Detail:    err.Error(),
+			})
+			return
+		}
+
+		createdChat, err = h.chatRepo.CreateChatWithParticipant(chat, participant)
+		if err != nil {
+			h.logger.Error().Err(err).Msg("Failed to create chat with participant")
+			common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+				Title:  "Internal Server Error",
+				Detail: "Error occurred while creating chat with participant",
+			})
+			return
+		}
+	} else {
+		// Create chat only
+		createdChat, err = h.chatRepo.CreateChat(chat)
+		if err != nil {
+			h.logger.Error().Err(err).Msg("Failed to create chat")
+			common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+				Title:  "Internal Server Error",
+				Detail: "Error occurred while creating chat",
+			})
+			return
+		}
 	}
 
 	common.WriteJsonWithEncode(w, http.StatusCreated, createdChat)

@@ -7,7 +7,8 @@ type AddParticipantRequest struct {
 }
 
 type CreateChatRequest struct {
-	Type        string  `json:"type"`
-	UserGroupId *int    `json:"usergroup_id,omitempty"`
-	ContainerId *string `json:"container_id,omitempty"`
+	Type          string  `json:"type"`
+	UserGroupId   *int    `json:"usergroup_id,omitempty"`
+	ContainerId   *string `json:"container_id,omitempty"`
+	ParticipantId string  `json:"participant_id,omitempty"`
 }

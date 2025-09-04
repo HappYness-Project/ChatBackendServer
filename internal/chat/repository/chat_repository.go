@@ -13,6 +13,7 @@ type ChatRepository interface {
 	GetChatById(chatId string) (*domain.Chat, error)
 	GetChatByGroupID(groupID int) (*domain.Chat, error)
 	CreateChat(chat *domain.Chat) (*domain.Chat, error)
+	CreateChatWithParticipant(chat *domain.Chat, participant *domain.ChatParticipant) (*domain.Chat, error)
 	DeleteChat(chatId string) error
 	GetChatParticipants(chatId string) ([]domain.ChatParticipant, error)
 	AddParticipantToChat(participant *domain.ChatParticipant) (*domain.ChatParticipant, error)
@@ -93,13 +94,54 @@ func (r *ChatRepo) GetChatByGroupID(groupID int) (*domain.Chat, error) {
 }
 
 func (r *ChatRepo) CreateChat(chat *domain.Chat) (*domain.Chat, error) {
-	_, err := r.db.Exec(`INSERT INTO public.chat (id, type, usergroup_id, container_id, created_at) 
+	_, err := r.db.Exec(`INSERT INTO public.chat (id, type, usergroup_id, container_id, created_at)
 						VALUES ($1, $2, $3, $4, $5)`,
 		chat.Id, chat.Type.String(), chat.UserGroupId, chat.ContainerId, chat.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
-	
+
+	return chat, nil
+}
+
+func (r *ChatRepo) CreateChatWithParticipant(chat *domain.Chat, participant *domain.ChatParticipant) (*domain.Chat, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Create chat
+	_, err = tx.Exec(`INSERT INTO public.chat (id, type, usergroup_id, container_id, created_at)
+					  VALUES ($1, $2, $3, $4, $5)`,
+		chat.Id, chat.Type.String(), chat.UserGroupId, chat.ContainerId, chat.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate participant ID and timestamp
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
+
+	participant.Id = id.String()
+	participant.JoinedAt = time.Now().UTC()
+
+	// Add participant
+	_, err = tx.Exec(`INSERT INTO public.chat_participant (id, chat_id, user_id, joined_at, role, status)
+					  VALUES ($1, $2, $3, $4, $5, $6)`,
+		participant.Id, participant.ChatId, participant.UserId, participant.JoinedAt,
+		participant.Role.String(), participant.Status.String())
+	if err != nil {
+		return nil, err
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
 	return chat, nil
 }
 
@@ -126,7 +168,7 @@ func (r *ChatRepo) GetChatParticipants(chatId string) ([]domain.ChatParticipant,
 		}
 		participants = append(participants, *participant)
 	}
-	
+
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
@@ -136,7 +178,7 @@ func (r *ChatRepo) GetChatParticipants(chatId string) ([]domain.ChatParticipant,
 
 func (r *ChatRepo) IsUserParticipantInChat(chatId, userId string) (bool, error) {
 	var count int
-	err := r.db.QueryRow(`SELECT COUNT(*) FROM public.chat_participant 
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM public.chat_participant
 						  WHERE chat_id = $1 AND user_id = $2`, chatId, userId).Scan(&count)
 	if err != nil {
 		return false, err
@@ -149,18 +191,18 @@ func (r *ChatRepo) AddParticipantToChat(participant *domain.ChatParticipant) (*d
 	if err != nil {
 		return nil, err
 	}
-	
+
 	participant.Id = id.String()
 	participant.JoinedAt = time.Now().UTC()
-	
-	_, err = r.db.Exec(`INSERT INTO public.chat_participant (id, chat_id, user_id, joined_at, role, status) 
+
+	_, err = r.db.Exec(`INSERT INTO public.chat_participant (id, chat_id, user_id, joined_at, role, status)
 						VALUES ($1, $2, $3, $4, $5, $6)`,
-		participant.Id, participant.ChatId, participant.UserId, participant.JoinedAt, 
+		participant.Id, participant.ChatId, participant.UserId, participant.JoinedAt,
 		participant.Role.String(), participant.Status.String())
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return participant, nil
 }
 
@@ -186,7 +228,7 @@ func scanRowsIntoChatParticipant(rows *sql.Rows) (*domain.ChatParticipant, error
 	var id, chatId, userId string
 	var joinedAt time.Time
 	var roleStr, statusStr string
-	
+
 	err := rows.Scan(&id, &chatId, &userId, &joinedAt, &roleStr, &statusStr)
 	if err != nil {
 		return nil, err
