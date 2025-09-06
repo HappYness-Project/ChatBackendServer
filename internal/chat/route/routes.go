@@ -33,6 +33,7 @@ func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Get("/api/user-groups/{groupID}/chat", h.GetChatByGroupID)
 	router.Post("/api/chats", h.CreateChat)
 	router.Delete("/api/chats/{chatID}", h.RemoveChat)
+	router.Delete("/api/user-groups/{groupID}/chat", h.RemoveChatByUserGroupId)
 	router.Get("/api/chats/{chatID}/chat-participants", h.GetChatParticipants)
 	router.Post("/api/chats/{chatID}/chat-participants", h.AddChatParticipant)
 }
@@ -160,7 +161,7 @@ func (h *Handler) CreateChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
+	h.logger.Info().Msg("Successfully created chat with ID: " + createdChat.Id)
 	common.WriteJsonWithEncode(w, http.StatusCreated, createdChat)
 }
 
@@ -195,6 +196,59 @@ func (h *Handler) RemoveChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = h.chatRepo.DeleteChat(chatID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to delete chat")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while deleting chat",
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) RemoveChatByUserGroupId(w http.ResponseWriter, r *http.Request) {
+	groupIDStr := chi.URLParam(r, "groupID")
+	if groupIDStr == "" {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Parameter",
+			ErrorCode: "MissingGroupID",
+			Detail:    "groupID is required",
+		})
+		return
+	}
+
+	groupID, err := strconv.Atoi(groupIDStr)
+	if err != nil {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Parameter",
+			ErrorCode: "InvalidGroupID",
+			Detail:    "The provided groupID is not a valid integer",
+		})
+		return
+	}
+
+	chat, err := h.chatRepo.GetChatByGroupID(groupID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to retrieve chat by groupID")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while retrieving chat",
+		})
+		return
+	}
+
+	if chat.Id == "" {
+		common.ErrorResponse(w, http.StatusNotFound, common.ProblemDetails{
+			Title:     "Not Found",
+			ErrorCode: "ChatNotFound",
+			Detail:    "Chat not found for the provided group ID",
+		})
+		return
+	}
+
+	err = h.chatRepo.DeleteChat(chat.Id)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to delete chat")
 		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
