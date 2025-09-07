@@ -64,7 +64,7 @@ func (r *MessageRepo) GetByUserGroup(userIDs []string, limit, offset int) ([]dom
 	query := `
 		SELECT DISTINCT m.id, m.chat_id, m.sender_id, m.content, m.message_type, m.created_at, m.read_status
 		FROM message m
-		INNER JOIN chat_participants cp ON m.chat_id = cp.chat_id
+		INNER JOIN chat_participant cp ON m.chat_id = cp.chat_id
 		WHERE cp.user_id = ANY($1)
 		ORDER BY m.created_at ASC
 		LIMIT $2 OFFSET $3
