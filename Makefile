@@ -27,16 +27,16 @@ build:
 	go build -v ./...
 
 rebuild-docker:
-	@docker-compose -f $(DOCKER_COMPOSE_FILE) down
-	@docker-compose -f $(DOCKER_COMPOSE_FILE) build --no-cache
-	@docker-compose -f $(DOCKER_COMPOSE_FILE) up -d
+	@docker compose -f $(DOCKER_COMPOSE_FILE) -p $(CONTAINER_NAME) down
+	@docker compose -f $(DOCKER_COMPOSE_FILE) -p $(CONTAINER_NAME) build --no-cache
+	@docker compose -f $(DOCKER_COMPOSE_FILE) -p $(CONTAINER_NAME) up -d
 
 watch: start
 	@echo "Watching for file changes..."
-	@docker-compose watch
+	@docker compose -f $(DOCKER_COMPOSE_FILE) -p $(CONTAINER_NAME) watch
 
 logs:
-	@docker-compose -f $(DOCKER_COMPOSE_FILE) logs -f
+	@docker compose -f $(DOCKER_COMPOSE_FILE) -p $(CONTAINER_NAME) logs -f
 
 test:
 	go test -v ./... -short
