@@ -36,8 +36,8 @@ func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Delete("/api/user-groups/{groupID}/chat", h.RemoveChatByUserGroupId)
 	router.Get("/api/chats/{chatID}/chat-participants", h.GetChatParticipants)
 	router.Post("/api/chats/{chatID}/chat-participants", h.AddChatParticipant)
+	router.Post("/api/chats/{chatID}/chat-participants/{participantID}", h.DeleteParticipantFromChat)
 }
-
 func (h *Handler) GetChatById(w http.ResponseWriter, r *http.Request) {
 	chatID := chi.URLParam(r, "chatID")
 	if chatID == "" {
@@ -399,6 +399,42 @@ func (h *Handler) AddChatParticipant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	common.WriteJsonWithEncode(w, http.StatusCreated, createdParticipant)
+}
+
+func (h *Handler) DeleteParticipantFromChat(w http.ResponseWriter, r *http.Request) {
+	chatID := chi.URLParam(r, "chatID")
+	if chatID == "" {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Parameter",
+			ErrorCode: "MissingChatID",
+			Detail:    "chatID is required",
+		})
+		return
+	}
+
+	participantID := chi.URLParam(r, "participantID")
+	if participantID == "" {
+		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
+			Title:     "Invalid Parameter",
+			ErrorCode: "MissingParticipantID",
+			Detail:    "participantID is required",
+		})
+		return
+	}
+
+	// Delete the participant from the chat
+	err := h.chatRepo.DeleteParticipantFromChat(chatID, participantID)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to delete participant from chat")
+		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
+			Title:  "Internal Server Error",
+			Detail: "Error occurred while removing participant from chat",
+		})
+		return
+	}
+
+	h.logger.Info().Msg("Successfully removed participant " + participantID + " from chat " + chatID)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) validateJWTToken(tokenString string) bool {

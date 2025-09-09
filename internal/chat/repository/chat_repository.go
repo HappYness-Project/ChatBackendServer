@@ -18,6 +18,7 @@ type ChatRepository interface {
 	GetChatParticipants(chatId string) ([]domain.ChatParticipant, error)
 	AddParticipantToChat(participant *domain.ChatParticipant) (*domain.ChatParticipant, error)
 	IsUserParticipantInChat(chatId, userId string) (bool, error)
+	DeleteParticipantFromChat(chatId, participantId string) error
 }
 
 type ChatRepo struct {
@@ -204,6 +205,12 @@ func (r *ChatRepo) AddParticipantToChat(participant *domain.ChatParticipant) (*d
 	}
 
 	return participant, nil
+}
+
+func (r *ChatRepo) DeleteParticipantFromChat(chatId, participantId string) error {
+	_, err := r.db.Exec(`DELETE FROM public.chat_participant 
+						 WHERE chat_id = $1 AND user_id = $2`, chatId, participantId)
+	return err
 }
 
 func scanRowsIntoChat(rows *sql.Rows) (*domain.Chat, error) {

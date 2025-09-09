@@ -494,3 +494,153 @@ func TestChatRepository_GetChatParticipants(t *testing.T) {
 		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat.Id)
 	})
 }
+
+func TestChatRepository_DeleteParticipantFromChat(t *testing.T) {
+	repo := repository.NewRepository(testDB)
+
+	t.Run("should delete existing participant from chat", func(t *testing.T) {
+		// Create a chat with a participant
+		userGroupID := 600
+		chat, err := domain.NewChat(domain.ChatTypeGroup, &userGroupID, nil)
+		require.NoError(t, err)
+
+		userUUID, err := uuid.NewV7()
+		require.NoError(t, err)
+		userID := userUUID.String()
+
+		participant, err := domain.NewChatParticipant(chat.Id, userID, "member", "active")
+		require.NoError(t, err)
+
+		createdChat, err := repo.CreateChatWithParticipant(chat, participant)
+		require.NoError(t, err)
+
+		// Verify participant exists
+		participants, err := repo.GetChatParticipants(createdChat.Id)
+		require.NoError(t, err)
+		require.Len(t, participants, 1)
+		assert.Equal(t, userID, participants[0].UserId)
+
+		// Delete the participant
+		err = repo.DeleteParticipantFromChat(createdChat.Id, userID)
+		require.NoError(t, err)
+
+		// Verify participant was deleted
+		participantsAfter, err := repo.GetChatParticipants(createdChat.Id)
+		require.NoError(t, err)
+		assert.Len(t, participantsAfter, 0)
+
+		// Cleanup
+		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat.Id)
+	})
+
+	t.Run("should handle deletion of non-existent participant gracefully", func(t *testing.T) {
+		// Create a chat without participants
+		userGroupID := 601
+		chat, err := domain.NewChat(domain.ChatTypeGroup, &userGroupID, nil)
+		require.NoError(t, err)
+
+		createdChat, err := repo.CreateChat(chat)
+		require.NoError(t, err)
+
+		nonExistentUserID := "01959b38-0000-0000-0000-000000000000"
+
+		// Attempt to delete non-existent participant
+		err = repo.DeleteParticipantFromChat(createdChat.Id, nonExistentUserID)
+		require.NoError(t, err) // Should not error even if participant doesn't exist
+
+		// Cleanup
+		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat.Id)
+	})
+
+	t.Run("should handle deletion from non-existent chat gracefully", func(t *testing.T) {
+		nonExistentChatID := "01987073-0000-0000-0000-000000000000"
+		nonExistentUserID := "01959b38-0000-0000-0000-000000000000"
+
+		// Attempt to delete participant from non-existent chat
+		err := repo.DeleteParticipantFromChat(nonExistentChatID, nonExistentUserID)
+		require.NoError(t, err) // Should not error even if chat doesn't exist
+	})
+
+	t.Run("should delete only specified participant from chat with multiple participants", func(t *testing.T) {
+		// Create a chat
+		userGroupID := 602
+		chat, err := domain.NewChat(domain.ChatTypeGroup, &userGroupID, nil)
+		require.NoError(t, err)
+
+		createdChat, err := repo.CreateChat(chat)
+		require.NoError(t, err)
+
+		// Create two participants
+		userUUID1, err := uuid.NewV7()
+		require.NoError(t, err)
+		userID1 := userUUID1.String()
+
+		userUUID2, err := uuid.NewV7()
+		require.NoError(t, err)
+		userID2 := userUUID2.String()
+
+		participant1, err := domain.NewChatParticipant(createdChat.Id, userID1, "admin", "active")
+		require.NoError(t, err)
+		participant2, err := domain.NewChatParticipant(createdChat.Id, userID2, "member", "active")
+		require.NoError(t, err)
+
+		// Add both participants
+		_, err = repo.AddParticipantToChat(participant1)
+		require.NoError(t, err)
+		_, err = repo.AddParticipantToChat(participant2)
+		require.NoError(t, err)
+
+		// Verify both participants exist
+		participants, err := repo.GetChatParticipants(createdChat.Id)
+		require.NoError(t, err)
+		require.Len(t, participants, 2)
+
+		// Delete only the first participant
+		err = repo.DeleteParticipantFromChat(createdChat.Id, userID1)
+		require.NoError(t, err)
+
+		// Verify only one participant remains
+		participantsAfter, err := repo.GetChatParticipants(createdChat.Id)
+		require.NoError(t, err)
+		require.Len(t, participantsAfter, 1)
+		assert.Equal(t, userID2, participantsAfter[0].UserId)
+
+		// Cleanup
+		_, _ = testDB.Exec(`DELETE FROM public.chat_participant WHERE chat_id = $1`, createdChat.Id)
+		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat.Id)
+	})
+
+	t.Run("should verify participant status check before deletion", func(t *testing.T) {
+		// Create a chat with a participant
+		userGroupID := 603
+		chat, err := domain.NewChat(domain.ChatTypeGroup, &userGroupID, nil)
+		require.NoError(t, err)
+
+		userUUID, err := uuid.NewV7()
+		require.NoError(t, err)
+		userID := userUUID.String()
+
+		participant, err := domain.NewChatParticipant(chat.Id, userID, "member", "active")
+		require.NoError(t, err)
+
+		createdChat, err := repo.CreateChatWithParticipant(chat, participant)
+		require.NoError(t, err)
+
+		// Verify participant is indeed in the chat before deletion
+		isParticipant, err := repo.IsUserParticipantInChat(createdChat.Id, userID)
+		require.NoError(t, err)
+		assert.True(t, isParticipant)
+
+		// Delete the participant
+		err = repo.DeleteParticipantFromChat(createdChat.Id, userID)
+		require.NoError(t, err)
+
+		// Verify participant is no longer in the chat after deletion
+		isParticipantAfter, err := repo.IsUserParticipantInChat(createdChat.Id, userID)
+		require.NoError(t, err)
+		assert.False(t, isParticipantAfter)
+
+		// Cleanup
+		_, _ = testDB.Exec(`DELETE FROM public.chat WHERE id = $1`, createdChat.Id)
+	})
+}
