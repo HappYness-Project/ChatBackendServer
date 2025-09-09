@@ -36,7 +36,7 @@ func (h *Handler) RegisterRoutes(router chi.Router) {
 	router.Delete("/api/user-groups/{groupID}/chat", h.RemoveChatByUserGroupId)
 	router.Get("/api/chats/{chatID}/chat-participants", h.GetChatParticipants)
 	router.Post("/api/chats/{chatID}/chat-participants", h.AddChatParticipant)
-	router.Post("/api/chats/{chatID}/chat-participants/{participantID}", h.DeleteParticipantFromChat)
+	router.Delete("/api/chats/{chatID}/chat-participants/{participantID}", h.DeleteParticipantFromChat)
 }
 func (h *Handler) GetChatById(w http.ResponseWriter, r *http.Request) {
 	chatID := chi.URLParam(r, "chatID")
