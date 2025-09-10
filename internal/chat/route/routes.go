@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/HappYness-Project/ChatBackendServer/common"
-	"github.com/HappYness-Project/ChatBackendServer/internal/chat/domain"
+	domain "github.com/HappYness-Project/ChatBackendServer/internal/chat/domain"
 	"github.com/HappYness-Project/ChatBackendServer/internal/chat/repository"
 	"github.com/HappYness-Project/ChatBackendServer/loggers"
 	"github.com/go-chi/chi/v5"
@@ -128,8 +128,8 @@ func (h *Handler) CreateChat(w http.ResponseWriter, r *http.Request) {
 
 	var createdChat *domain.Chat
 
-	if request.ParticipantId != "" {
-		participant, err := domain.NewChatParticipant(chat.Id, request.ParticipantId, "admin", "active")
+	if request.UserId != "" {
+		participant, err := domain.NewChatParticipant(chat.Id, request.UserId, "admin", "active")
 		if err != nil {
 			h.logger.Error().Err(err).Msg("Failed to create chat participant")
 			common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
@@ -329,35 +329,6 @@ func (h *Handler) AddChatParticipant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if request.UserId == "" {
-		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
-			Title:     "Invalid Request",
-			ErrorCode: "MissingUserId",
-			Detail:    "user_id is required",
-		})
-		return
-	}
-
-	chat, err := h.chatRepo.GetChatById(chatID)
-	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to retrieve chat by ID")
-		common.ErrorResponse(w, http.StatusInternalServerError, common.ProblemDetails{
-			Title:  "Internal Server Error",
-			Detail: "Error occurred while retrieving chat",
-		})
-		return
-	}
-
-	if chat.Id == "" {
-		common.ErrorResponse(w, http.StatusNotFound, common.ProblemDetails{
-			Title:     "Not Found",
-			ErrorCode: "ChatNotFound",
-			Detail:    "Chat not found with the provided ID",
-		})
-		return
-	}
-
-	// Check if user is already a participant
 	isParticipant, err := h.chatRepo.IsUserParticipantInChat(chatID, request.UserId)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to check if user is participant")
@@ -367,7 +338,6 @@ func (h *Handler) AddChatParticipant(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
 	if isParticipant {
 		common.ErrorResponse(w, http.StatusConflict, common.ProblemDetails{
 			Title:     "Conflict",
@@ -378,7 +348,7 @@ func (h *Handler) AddChatParticipant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create participant using domain constructor (includes validation)
-	participant, err := domain.NewChatParticipant(chatID, request.UserId, request.Role, request.Status)
+	participant, err := domain.NewChatParticipant(chatID, request.UserId, domain.RoleMember, domain.StatusActive)
 	if err != nil {
 		common.ErrorResponse(w, http.StatusBadRequest, common.ProblemDetails{
 			Title:     "Invalid Request",
